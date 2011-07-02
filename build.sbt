@@ -9,6 +9,7 @@ libraryDependencies ++= Seq(
 	"junit" % "junit" % "4.8" % "test",
 	"org.scalatest" % "scalatest_2.9.0" % "1.6.1",
 	"org.scala-tools.testing" % "scalacheck_2.9.0-1" % "1.9",
-	"org.clapper" %% "grizzled-scala" % "1.0.6"
+	"org.clapper" %% "grizzled-scala" % "1.0.6",
+	"org.clapper" %% "argot" % "0.3.1"
 )
 
