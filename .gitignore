@@ -1,3 +1,10 @@
-.DS_Store
+# sbt 0.10 directories
 target/
 project/boot/
+# Mac
+.DS_Store
+# eclipse
+.project
+.scala_dependencies
+.classpath
+
