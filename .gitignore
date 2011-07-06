@@ -1,6 +1,8 @@
 # sbt 0.10 directories
 target/
 project/boot/
+# project
+src/test/resources/temp/
 # Mac
 .DS_Store
 # eclipse
