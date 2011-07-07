@@ -1,9 +1,12 @@
 package com.pvteks.mvstuff
 
+
 /**
  * 
  */
-object `mvstuff` {
+object `mvstuff` extends `mvstuff` 
+
+class `mvstuff` private[mvstuff] {
 
   import scala.collection.mutable
   import scala.Console._
@@ -48,6 +51,12 @@ object `mvstuff` {
       withCloseable(is) { while (is.read(buffer) != -1) {} }
       Vector(md.digest():_*)
   }
+  
+  case class Digest(digest: Vector[Byte]) {
+    require (digest.length == 20)
+    def toHexString: String = digest map (_ formatted "%02x") reduce (_ + _)
+  }
+  implicit def bv2digest(bv: Vector[Byte]) = Digest(bv)
 
   private def now = new java.util.Date
   private lazy val ymd_HM = "ymd_HM".flatMap(c => if (c == '_') "" + c else "%1$t" + c)
@@ -64,11 +73,15 @@ object `mvstuff` {
    * A pimped <code>File</code>, with digest and destination name.
    */
   class SourceFile(val file: File) {
-    require (file.exists)
+    require(file.exists)
     val digest = mkDigest(file)
+    val path = {
+      val parentPath = file.getParent
+      if (parentPath.substring(0, 2) == ("." +/)) parentPath.substring(2) else parentPath
+    }
     val outFileName = 
             dateString + '-' + 
-            file.getParent.replace(File.separator, "-") + '-' + 
+            path.replace(File.separator, "-") + '-' + 
             esc(file.getName)
             
   }
@@ -106,6 +119,69 @@ object `mvstuff` {
     }
   }
 
+  def mkdir(name: String) {
+    val dir = new File(name)
+    if (!dir.mkdir()) throw new RuntimeException("can't make " + dir)  
+  }
+
+
+  def rm(file: File): Boolean = {
+    val ok= file.delete() 
+    if (!ok) err.println("could not delete file " + file)
+    ok
+  }
+  
+  /**
+   * Equivalent to <code>$ rm -rfd</code>
+   */
+  def rmRfd(dirPath: String): Boolean = {
+    val dir = new File(dirPath);
+    dir.exists && dir.isDirectory && dir.canRead && rmRfd(dir)
+  }
+  
+  def rmRfd(dir: File): Boolean = {
+    require (dir.exists && dir.isDirectory && dir.canRead)
+    var ok = true
+    for (file <- dir.listFiles) {
+      if (file.isDirectory) ok &= rmRfd(file)
+      else ok &= file.delete()
+    }
+    ok &= dir.delete()
+    if (!ok) err.println("could not delete dir " + dir)
+    ok
+  }
+  
+  /**
+   * Only remove empty(ish) directories.
+   */
+  def rmEmptyDirs(dir: File) {
+    for (d <- dir.listFiles; if (d.isDirectory)) rmEmptyDirs(d)
+    val dss = new File(dir, ".DS_Store")        // Finder love!
+    if (dss.exists) rm(dss)
+    if (dir.list.isEmpty) rm(dir) else err.println("NotEmpty? : " + dir)
+  }
+  
+  /**
+   * Copy manually - rename doesn't work across volumes, etc...
+   */
+  def cp(from: String, to: String): Boolean = cp(new File(from), new File(to))
+
+  def cp(from: SourceFile, to: File): Boolean = {
+    val is = new FileInputStream(from)
+    val os = new FileOutputStream(to)
+    val buffer = new Array[Byte](4096 * 16)
+    var bytesRead = 0
+    def readBytes() : Boolean = {
+      bytesRead = is.read(buffer)
+      bytesRead != -1
+    }
+    def writeBytes() = os.write(buffer, 0, bytesRead)
+    withFlushable(os) { while (readBytes()) writeBytes() }
+    to setLastModified from.lastModified
+    from.digest == to.digest
+  }  
+  
+  
   /**
    * Represents and indexed directory. Files are stored flat in the directory (we rely on Spotlight
    * to find stuff), and duplicates are elminated by checking against an index of sha1 digests.
@@ -178,7 +254,7 @@ object `mvstuff` {
     
     @inline def cpstuff(exts: String*)  { cpstuff(new ExtensionFileFilter(exts:_*)) }
     @inline def cpstuff(regex: Regex)   { cpstuff(new RegexFileFilter(regex)) }
-    @inline def cpstuff(ff: FileFilter) { dostuff(ff, true) }
+    @inline def cpstuff(ff: FileFilter) { dostuff(ff, false) }
     
     private def dostuff(ff: FileFilter, deleteSource: Boolean) {
       var files = List[File]()
@@ -193,7 +269,7 @@ object `mvstuff` {
       }
     }
       
-    def inspectIndex() { for (entry <- dm) println(entry) }
+    def inspectIndex() { for ((digest, name) <- dm) println(digest.toHexString + " -> " + name) }
     
     def flush() { oos.flush() }
     def close() { oos.close() }
@@ -202,67 +278,4 @@ object `mvstuff` {
   object IndexedDestDir {
     def apply(name: String) = new IndexedDestDir(new File(name))
   }
-
-  def mkdir(name: String) {
-    val dir = new File(name)
-    if (!dir.mkdir()) throw new RuntimeException("can't make " + dir)  
-  }
-
-
-  def rm(file: File): Boolean = {
-    val ok= file.delete() 
-    if (!ok) err.println("could not delete file " + file)
-    ok
-  }
-  
-  /**
-   * Equivalent to <code>$ rm -rfd</code>
-   */
-  def rmRfd(dirPath: String): Boolean = {
-    val dir = new File(dirPath);
-    dir.exists && dir.isDirectory && dir.canRead && rmRfd(dir)
-  }
-  
-  def rmRfd(dir: File): Boolean = {
-    require (dir.exists && dir.isDirectory && dir.canRead)
-    var ok = true
-    for (file <- dir.listFiles) {
-      if (file.isDirectory) ok &= rmRfd(file)
-      else ok &= file.delete()
-    }
-    ok &= dir.delete()
-    if (!ok) err.println("could not delete dir " + dir)
-    ok
-  }
-  
-  /**
-   * Only remove empty(ish) directories.
-   */
-  def rmEmptyDirs(dir: File) {
-    for (d <- dir.listFiles; if (d.isDirectory)) rmEmptyDirs(d)
-    val dss = new File(dir, ".DS_Store")        // Finder love!
-    if (dss.exists) rm(dss)
-    if (dir.list.isEmpty) rm(dir) else err.println("NotEmpty? : " + dir)
-  }
-  
-  /**
-   * Copy manually - rename doesn't work across volumes, etc...
-   */
-  def cp(from: SourceFile, to: File): Boolean = {
-    val is = new FileInputStream(from)
-    val os = new FileOutputStream(to)
-    val buffer = new Array[Byte](4096 * 16)
-    var bytesRead = 0
-    def readBytes() : Boolean = {
-      bytesRead = is.read(buffer)
-      bytesRead != -1
-    }
-    def writeBytes() = os.write(buffer, 0, bytesRead)
-    withFlushable(os) { while (readBytes()) writeBytes() }
-    to setLastModified from.lastModified
-    from.digest == to.digest
-  }  
-  
-  def cp(from: String, to: String): Boolean = cp(new File(from), new File(to))
-  
 }
