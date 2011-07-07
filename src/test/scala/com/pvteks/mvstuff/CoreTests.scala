@@ -117,47 +117,45 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     walk(rxff) should equal (xfiles)
   }
   
-  @Test def indexedDestDir() {
+  def resultFiles = {
+    val files = for (file <- (new File("temp")).listFiles; if (!file.isHidden)) yield file
+    files.map(_.getPath drop ("temp".length + 1)).toSet 
+  }
+  @Test def indexedDestDirNoDups() {
+    
+    val xpected = (xfiles) map { dateString + '-' + _.replace(File.separator, "-") }
     
     _testabilityDate = Some(new java.util.Date)
     mkdir("temp")
-    val idd = IndexedDestDir("temp")
 
-    // this is wrong. the code is right.
-//    val xdups = List(
-//            "x" +/+ "y" +/+ "a_copy.txt", 
-//            "x" +/+ "blah_copy.jnk"
-//        ) map ("files" +/+ _)
-//    
-    val xpected = (xfiles /* -- xdups */) map {
-      dateString + '-' + _.replace(File.separator, "-")
-    }
-    
+    val idd = IndexedDestDir("temp")
     idd cpstuff xfileRx
-    val files = for (file <- (new File("temp")).listFiles; if (!file.isHidden)) yield file
-    files.map(_.getPath().substring("temp".length + 1)).toSet should equal (xpected)
+    resultFiles should equal (xpected)
     idd.dups should equal (0)
     idd.inspectIndex()
     rmRfd("temp") should be (true)
   }
+  
+  @Test def indexedDestDirAll() {
+    
+    val files = txts ++ jnks 
+    val dups = List(
+            "foo_copy.jnk",
+            "x" +/+ "blah_copy.jnk",
+            "x" +/+ "y" +/+ "a_copy.txt"
+        ) map ("files" +/+ _)
+    val expected = (files -- dups) map { dateString + '-' + _.replace(File.separator, "-") }
+    
+    _testabilityDate = Some(new java.util.Date)
+    mkdir("temp")
+    
+    val idd = IndexedDestDir("temp")
+    idd cpstuff (".*\\.(?i:jnk|TXT)").fixupR.r
+    resultFiles should equal (expected)
+    idd.dups should equal (3)
+    idd.inspectIndex()
+    rmRfd("temp") should be (true)
+    
+  }
+  
 }
-
-/*
-org.scalatest.junit.JUnitTestFailedError: 
-Set(
-110707_0021-files-x-foo.jnk, 
-110707_0021-files-x-b.txt, 
-110707_0021-files-x-y-a_copy.txt, 
-110707_0021-files-x-blah_copy.jnk, 
-110707_0021-files-x-y-bar.jnk
-
-) did not equal Set(
-
-110707_0021-files-x-b.txt, 
-110707_0021-files-x-y-bar.jnk, 
-110707_0021-files-x-foo.jnk
-
-)
-
-
-*/

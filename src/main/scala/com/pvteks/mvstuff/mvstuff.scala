@@ -75,10 +75,7 @@ class `mvstuff` private[mvstuff] {
   class SourceFile(val file: File) {
     require(file.exists)
     val digest = mkDigest(file)
-    val path = {
-      val parentPath = file.getParent
-      if (parentPath.substring(0, 2) == ("." +/)) parentPath.substring(2) else parentPath
-    }
+    val path = file.getParent stripPrefix ("." +/)
     val outFileName = 
             dateString + '-' + 
             path.replace(File.separator, "-") + '-' + 
