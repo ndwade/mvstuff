@@ -89,6 +89,14 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
           "x" +/+ "foo.jnk",
           "x" +/+ "y" +/+ "bar.jnk"
       ) map ("files" +/+ _)
+      
+  val allDups = List(
+          "foo_copy.jnk",
+          "x" +/+ "blah_copy.jnk",
+          "x" +/+ "y" +/+ "a_copy.txt"
+      ) map ("files" +/+ _)
+
+  val allFiles = txts ++ jnks 
 
   private def walk(ff: FileFilter, dir: String = "files") = {
     var files = List[File]()
@@ -138,13 +146,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   
   @Test def indexedDestDirAll() {
     
-    val files = txts ++ jnks 
-    val dups = List(
-            "foo_copy.jnk",
-            "x" +/+ "blah_copy.jnk",
-            "x" +/+ "y" +/+ "a_copy.txt"
-        ) map ("files" +/+ _)
-    val expected = (files -- dups) map { dateString + '-' + _.replace(File.separator, "-") }
+    val expected = (allFiles -- allDups) map { dateString + '-' + _.replace(File.separator, "-") }
     
     _testabilityDate = Some(new java.util.Date)
     mkdir("temp")
@@ -154,7 +156,20 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     resultFiles should equal (expected)
     idd.dups should equal (3)
     idd.inspectIndex()
+    idd.flush(); idd.close()
+    
+    val idd2 = IndexedDestDir("temp")
+    println("idd2-pre")
+    idd2.inspectIndex
+    idd2 cpstuff (".*_copy\\.(?i:jnk|TXT)").fixupR.r
+    resultFiles should equal (expected)
+    idd2.dups should equal (3)
+    println("idd2-post")
+    idd2.inspectIndex()
+    idd2.flush(); idd2.close()
+    
     rmRfd("temp") should be (true)
+    
     
   }
   

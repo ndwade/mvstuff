@@ -28,18 +28,27 @@ class `mvstuff` private[mvstuff] {
     def fixupR = if (File.separatorChar == '\\') string.replace("\\", "\\\\") else string
   }
   implicit def string2pathstring(string: String) = PathString(string)
+
+  class AppendableObjectOutputStream(os: OutputStream) extends ObjectOutputStream(os) {
+    override protected def writeStreamHeader() { /* this space intentionally left blank */ }
+    override protected def writeClassDescriptor(desc: ObjectStreamClass) { /* ditto */ }
+  }
   
   type Closeable = { def close(): Unit } 
   def withCloseable[C <: Closeable](c: C)(body: => Unit) {
     try { body }
+    catch { case t: Throwable => err.println(t + " thrown by " + c)  }
     finally { c.close() }
   }
   
   type Flushable = { def flush(): Unit } 
   def withFlushable[F <: Flushable with Closeable](f: F)(body: => Unit) {
     try { body }
+    catch { case t: Throwable => err.println(t + " thrown by " + f) }
     finally { withCloseable(f) { f.flush() } }
   }
+  
+  def insist(ok: Boolean) { if (!ok) throw new IllegalStateException("not OK!") }
   
   /**
    * Make a sha1 digest for a <code>File</code>
@@ -184,39 +193,53 @@ class `mvstuff` private[mvstuff] {
    * to find stuff), and duplicates are elminated by checking against an index of sha1 digests.
    */
   class IndexedDestDir private (val dir: File) {
+
+    def this(name: String) = this(new File(name))
     
     require (dir.exists && dir.isDirectory && dir.canRead && dir.canWrite)
-    def this(name: String) = this(new File(name))
     
     val dm = mutable.Map[Vector[Byte],  String]()
     val index = new File(dir, indexName)
-    
+
     if (!index.exists) {
-      err.println("creating index for directory " + this)
-      val oos = new ObjectOutputStream(new FileOutputStream(index))
-      withFlushable(oos) {
+      insist(index.createNewFile())                     // ensures index file is in index as entry
+      val dos = new DataOutputStream(new FileOutputStream(index))
+      withFlushable(dos) {
         for (file <- dir.listFiles; if (file.isFile)) {
-          oos.writeObject((file.digest, oos.writeObject(file.getName))) 
+          writeEntry(dos, file.digest, file.getName)
+          dm(file.digest) = file.getName
         }
       }
       println(dir.getName + ": wrote digest db for " + dm.size + " files")
-    }   // sic
-    
+    }
+    // sic
     {
-      val ios = new ObjectInputStream(new FileInputStream(index))
-      withCloseable(ios) {
-        @annotation.tailrec
-        def loop() {
-          val entry = ios.readObject().asInstanceOf[Tuple2[Vector[Byte], String]]
-          if (entry != null) {
-            dm += entry
-            loop()
-          } 
+      val dis = new DataInputStream(new FileInputStream(index))
+      val digestBuffer = new Array[Byte](20)
+      def readEntry() = {
+        try {
+          val n = dis.read(digestBuffer)
+          if (n == -1) throw new java.io.EOFException     // intentional flow control
+          val digest = Vector(digestBuffer:_*) 
+          val name = dis.readUTF()
+          err.println("read entry " + digest.toHexString + " -> " + name)
+          (digest, name)
+        }
+        catch {
+          case t: Throwable => err.println(t + " thrown by " + dis); throw t
+        }
+      }
+
+      withCloseable(dis) { 
+        while (true) {
+          val entry = readEntry()
+          err.println("read entry " + entry)
+          dm += entry
         }
       }
     }
-    
-    private[this] val oos = new ObjectOutputStream(new FileOutputStream(index, true))   // append
+
+    private[this] val dos = new DataOutputStream(new FileOutputStream(index))
     
     private[this] var _dups = 0;
     def dups: Int = _dups
@@ -236,9 +259,8 @@ class `mvstuff` private[mvstuff] {
           err.println("failed to copy " + src.getPath + " to " + dest.getPath)
           return
         } else {
-          val entry = (src.digest, src.outFileName)
-          dm += entry
-          oos.writeObject(entry)
+          writeEntry(dos, src.digest, src.outFileName)
+          dm(src.digest) = src.outFileName
         }
       }
       if (deleteSource && src.exists && !rm(src)) 
@@ -268,8 +290,20 @@ class `mvstuff` private[mvstuff] {
       
     def inspectIndex() { for ((digest, name) <- dm) println(digest.toHexString + " -> " + name) }
     
-    def flush() { oos.flush() }
-    def close() { oos.close() }
+    def flush() { dos.flush() }
+    def close() { dos.close() }
+    
+    private[this] def writeEntry(dos: DataOutputStream, digest: Vector[Byte], name: String) {
+      require (digest.size == 20)
+      try {
+        dos.write(digest.toArray, 0, 20)
+        dos.writeUTF(name)
+      }
+      catch {
+        case t: Throwable => err.println(t + " thrown by " + dos); throw t
+      }
+
+    }
   }
     
   object IndexedDestDir {
