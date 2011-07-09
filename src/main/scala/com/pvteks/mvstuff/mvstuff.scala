@@ -1,11 +1,60 @@
+/*
+    mvstuff License
+    ==============================
+    
+    This software is released under BSD license, adapted from
+    <http://opensource.org/licenses/bsd-license.php>
+    
+    ---
+    
+    Copyright (c) 2011, Panavista Technologies LLC.
+    All rights reserved.
+    
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+    
+    * Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimer.
+    
+    * Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimer in the documentation
+      and/or other materials provided with the distribution.
+    
+    * Neither the names "Panavista Technologies LLC", "pvteks.com", "mvstuff", nor the names
+      of its contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+    
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+    ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+    LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+    CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+    SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+    INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+    CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+    ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+    POSSIBILITY OF SUCH DAMAGE. 
+
+*/
 package com.pvteks.mvstuff
 
 
 /**
+ * A focussed set of primitives to shove large quantities of files in random directory structures
+ * into a single, managed directory, eliminating duplicates, and preserving time order.
  * 
+ * Appropriate for "stuff" which is non-critical but which is worth hanging on to.
+ * 
+ * Rather than create an all singing, all dancing utility with lots of options, a set of 
+ * methods is exposed in a package object which may be used to construct interpreted scala scripts 
+ * for specific purposes.
  */
 object `mvstuff` extends `mvstuff` 
 
+/**
+ * Since we can't set breakpoints within objects, this is how we roll. Yo. 
+ */
 class `mvstuff` private[mvstuff] {
 
   import scala.collection.mutable
@@ -29,22 +78,15 @@ class `mvstuff` private[mvstuff] {
   }
   implicit def string2pathstring(string: String) = PathString(string)
 
-  class AppendableObjectOutputStream(os: OutputStream) extends ObjectOutputStream(os) {
-    override protected def writeStreamHeader() { /* this space intentionally left blank */ }
-    override protected def writeClassDescriptor(desc: ObjectStreamClass) { /* ditto */ }
-  }
-  
   type Closeable = { def close(): Unit } 
   def withCloseable[C <: Closeable](c: C)(body: => Unit) {
     try { body }
-    catch { case t: Throwable => err.println(t + " thrown by " + c)  }
     finally { c.close() }
   }
   
   type Flushable = { def flush(): Unit } 
   def withFlushable[F <: Flushable with Closeable](f: F)(body: => Unit) {
     try { body }
-    catch { case t: Throwable => err.println(t + " thrown by " + f) }
     finally { withCloseable(f) { f.flush() } }
   }
   
@@ -164,7 +206,7 @@ class `mvstuff` private[mvstuff] {
     for (d <- dir.listFiles; if (d.isDirectory)) rmEmptyDirs(d)
     val dss = new File(dir, ".DS_Store")        // Finder love!
     if (dss.exists) rm(dss)
-    if (dir.list.isEmpty) rm(dir) else err.println("NotEmpty? : " + dir)
+    if (dir.list.isEmpty) rm(dir) else println("NotEmpty? : " + dir)
   }
   
   /**
@@ -217,29 +259,22 @@ class `mvstuff` private[mvstuff] {
       val dis = new DataInputStream(new FileInputStream(index))
       val digestBuffer = new Array[Byte](20)
       def readEntry() = {
-        try {
-          val n = dis.read(digestBuffer)
-          if (n == -1) throw new java.io.EOFException     // intentional flow control
-          val digest = Vector(digestBuffer:_*) 
-          val name = dis.readUTF()
-          err.println("read entry " + digest.toHexString + " -> " + name)
-          (digest, name)
-        }
-        catch {
-          case t: Throwable => err.println(t + " thrown by " + dis); throw t
-        }
+        val n = dis.read(digestBuffer)
+        if (n == -1) throw new java.io.EOFException     // intentional flow control
+        val digest = Vector(digestBuffer:_*) 
+        val name = dis.readUTF()
+        // err.println("read entry " + digest.toHexString + " -> " + name)
+        (digest, name)
       }
-
       withCloseable(dis) { 
-        while (true) {
-          val entry = readEntry()
-          err.println("read entry " + entry)
-          dm += entry
-        }
+        try { while (true) dm += readEntry() } catch { case _:  EOFException => () }
       }
     }
 
     private[this] val dos = new DataOutputStream(new FileOutputStream(index))
+    
+    private[this] var _copied = 0
+    def copied: Int = _copied
     
     private[this] var _dups = 0;
     def dups: Int = _dups
@@ -251,7 +286,7 @@ class `mvstuff` private[mvstuff] {
     def indexAndCopyFrom(src: SourceFile, deleteSource: Boolean = false) {
       if (dm contains src.digest) {
         _dups += 1
-        err.println("dup: " + src.getPath + " is identical to " + dm(src.digest))
+        println("dup: " + src.getPath + " is identical to " + dm(src.digest))
       } else {
         val dest = new File(dir, src.outFileName)
         val ok = deleteSource && (src renameTo dest) || cp(src, dest)
@@ -261,11 +296,28 @@ class `mvstuff` private[mvstuff] {
         } else {
           writeEntry(dos, src.digest, src.outFileName)
           dm(src.digest) = src.outFileName
+          _copied += 1
         }
       }
       if (deleteSource && src.exists && !rm(src)) 
-        err.println("failed to remove " + src.getPath)
+        err.println("failed to delete " + src.getPath)
     }
+    
+    @inline def !+>>: (exts: String*)   { mvstuff(exts:_*) }
+    @inline def !+>>: (regex: Regex)    { mvstuff(regex) }
+    @inline def !+>>: (ff: FileFilter)  { mvstuff(ff) }
+    
+    @inline def <<+!  (exts: String*)   { mvstuff(exts:_*) }
+    @inline def <<+!  (regex: Regex)    { mvstuff(regex) }
+    @inline def <<+!  (ff: FileFilter)  { mvstuff(ff) }
+    
+    @inline def ++>>: (exts: String*)   { cpstuff(exts:_*) }
+    @inline def ++>>: (regex: Regex)    { cpstuff(regex) }
+    @inline def ++>>: (ff: FileFilter)  { cpstuff(ff) }
+    
+    @inline def <<++  (exts: String*)   { cpstuff(exts:_*) }
+    @inline def <<++  (regex: Regex)    { cpstuff(regex) }
+    @inline def <<++  (ff: FileFilter)  { cpstuff(ff) }
     
     @inline def mvstuff(exts: String*)  { mvstuff(new ExtensionFileFilter(exts:_*)) }
     @inline def mvstuff(regex: Regex)   { mvstuff(new RegexFileFilter(regex)) }
@@ -276,16 +328,19 @@ class `mvstuff` private[mvstuff] {
     @inline def cpstuff(ff: FileFilter) { dostuff(ff, false) }
     
     private def dostuff(ff: FileFilter, deleteSource: Boolean) {
-      var files = List[File]()
-      def processDir(dir: File) {
+      def processDir(dir: File): List[File] = {
         require(dir.exists && dir.isDirectory && dir.canRead)
-        for (file <- dir.listFiles(ff)) files ::= file
-        for (sub <- dir.listFiles; if (sub.isDirectory)) processDir(sub)
+        dir.listFiles.toList.flatMap { file =>
+          if (ff accept file) List(file)
+          else if (file.isDirectory) processDir(file)
+          else Nil
+        }
       }
-      processDir(new File("."))
+      var files = processDir(new File("."))
       for (file <- files.sortWith(_.file.lastModified < _.file.lastModified)) { 
         indexAndCopyFrom(file, deleteSource) 
       }
+      println("copied " + copied + " files to " + dir)
     }
       
     def inspectIndex() { for ((digest, name) <- dm) println(digest.toHexString + " -> " + name) }
@@ -295,14 +350,8 @@ class `mvstuff` private[mvstuff] {
     
     private[this] def writeEntry(dos: DataOutputStream, digest: Vector[Byte], name: String) {
       require (digest.size == 20)
-      try {
-        dos.write(digest.toArray, 0, 20)
-        dos.writeUTF(name)
-      }
-      catch {
-        case t: Throwable => err.println(t + " thrown by " + dos); throw t
-      }
-
+      dos.write(digest.toArray, 0, 20)
+      dos.writeUTF(name)
     }
   }
     

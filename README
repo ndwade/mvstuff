@@ -1,1 +1,8 @@
-Simple desktop clearing utility.
+A focussed set of primitives to shove large quantities of files in random directory structures
+into a single, managed directory, eliminating duplicates, and preserving time order.
+
+Appropriate for "stuff" which is non-critical but which is worth hanging on to.
+
+Rather than create an all singing, all dancing utility with lots of options, a set of 
+methods is exposed in a package object which may be used to construct interpreted scala scripts 
+for specific purposes.
