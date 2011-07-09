@@ -66,8 +66,12 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     Vector(sha1.sliding(2, 2).map(hex2byte(_)).toSeq:_*)
   }
   
-  @Before def cleanup() {
+  @Before def setup() {
     rmRfd("temp")
+    rmRfd("files")
+    mkdir("temp")
+    mkdir("files")
+    cpTree("golden", "files")
   }
   @Test def digest() {
 
@@ -85,7 +89,6 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   
   @Test def cpMkdirRmRfd() {
     
-    mkdir("temp")
     val fDir = new File("temp")
     (fDir.exists && fDir.isDirectory) should be (true) 
     
@@ -157,7 +160,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     walk(new ExtensionFileFilter("tXt", "jnK")) should equal (txts ++ jnks)
   }
   
-  val xfileRx = (".*" +/+ "x" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
+  val xfileRx = (".*files" +/+ "x" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
   val rxff = new RegexFileFilter(xfileRx)
   
   @Test def regexFileFilter() {
@@ -173,7 +176,6 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val xpected = (xfiles) map { dateString + '-' + _.replace(File.separator, "-") }
     
     _testabilityDate = Some(new java.util.Date)
-    mkdir("temp")
 
     val idd = IndexedDestDir("temp")
     idd cpstuff xfileRx
@@ -188,10 +190,9 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val expected = (allFiles -- allDups) map { dateString + '-' + _.replace(File.separator, "-") }
     
     _testabilityDate = Some(new java.util.Date)
-    mkdir("temp")
     
     val idd = IndexedDestDir("temp")
-    idd cpstuff (".*\\.(?i:jnk|TXT)").fixupR.r
+    idd cpstuff ("." +/+ "files" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
     resultFiles should equal (expected)
     idd.dups should equal (3)
     idd.inspectIndex()
@@ -200,7 +201,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val idd2 = IndexedDestDir("temp")
     println("idd2-pre")
     idd2.inspectIndex
-    idd2 cpstuff (".*_copy\\.(?i:jnk|TXT)").fixupR.r
+    idd2 cpstuff ("." +/+ "files" +/+ ".*_copy\\.(?i:jnk|TXT)").fixupR.r
     resultFiles should equal (expected)
     idd2.dups should equal (3)
     println("idd2-post")
@@ -208,8 +209,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     idd2.flush(); idd2.close()
     
     rmRfd("temp") should be (true)
-    
-    
+     
   }
   
 }

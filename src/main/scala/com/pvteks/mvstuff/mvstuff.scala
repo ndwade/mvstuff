@@ -50,6 +50,15 @@ package com.pvteks.mvstuff
  * methods is exposed in a package object which may be used to construct interpreted scala scripts 
  * for specific purposes.
  */
+
+/*
+ * TODO:
+ * 
+ * fix the package object mess: one level out, please.
+ * 
+ * progress indication on creation of large indexes
+ * 
+ */
 object `mvstuff` extends `mvstuff` 
 
 /**
@@ -167,12 +176,14 @@ class `mvstuff` private[mvstuff] {
     }
   }
 
-  def mkdir(name: String) {
-    val dir = new File(name)
+  def mkdir(name: String) { mkdir (new File(name)) }
+  
+  def mkdir(dir: File) {
     if (!dir.mkdir()) throw new RuntimeException("can't make " + dir)  
   }
 
-
+  def rm(path: String):Boolean = rm(new File(path))
+  
   def rm(file: File): Boolean = {
     val ok= file.delete() 
     if (!ok) err.println("could not delete file " + file)
@@ -229,6 +240,24 @@ class `mvstuff` private[mvstuff] {
     from.digest == to.digest
   }  
   
+  /**
+   * copy a whole tree. TODO: reconsider the whole naming thing...  
+   */
+  def cpTree(from: String, to: String) { cpTree(new File(from), new File(to)) }
+  
+  def cpTree(from: File, to: File) {
+    require (from.exists && from.isDirectory && from.canRead)
+    require (to.exists && to.isDirectory && to.canRead && to.canWrite)
+    for (file <- from.listFiles) {
+      if (file.isDirectory) { 
+        val subTo = new File(to, file.getName); 
+        mkdir(subTo); 
+        cpTree(file, subTo) 
+      } else {
+        cp(file, new File(to, file.getName))
+      }
+    }
+  }
   
   /**
    * Represents and indexed directory. Files are stored flat in the directory (we rely on Spotlight
@@ -263,7 +292,7 @@ class `mvstuff` private[mvstuff] {
         if (n == -1) throw new java.io.EOFException     // intentional flow control
         val digest = Vector(digestBuffer:_*) 
         val name = dis.readUTF()
-        // err.println("read entry " + digest.toHexString + " -> " + name)
+        err.println("read entry " + digest.toHexString + " -> " + name)
         (digest, name)
       }
       withCloseable(dis) { 
@@ -271,7 +300,7 @@ class `mvstuff` private[mvstuff] {
       }
     }
 
-    private[this] val dos = new DataOutputStream(new FileOutputStream(index))
+    private[this] val dos = new DataOutputStream(new FileOutputStream(index, true))
     
     private[this] var _copied = 0
     def copied: Int = _copied
@@ -296,6 +325,7 @@ class `mvstuff` private[mvstuff] {
         } else {
           writeEntry(dos, src.digest, src.outFileName)
           dm(src.digest) = src.outFileName
+          err.println("copied " + src.getPath + " to " + dest.getPath)
           _copied += 1
         }
       }
@@ -340,6 +370,7 @@ class `mvstuff` private[mvstuff] {
       for (file <- files.sortWith(_.file.lastModified < _.file.lastModified)) { 
         indexAndCopyFrom(file, deleteSource) 
       }
+      flush(); close()
       println("copied " + copied + " files to " + dir)
     }
       
