@@ -37,8 +37,6 @@
     POSSIBILITY OF SUCH DAMAGE. 
 
 */
-package com.pvteks.mvstuff
-
 
 /**
  * A focussed set of primitives to shove large quantities of files in random directory structures
@@ -54,17 +52,41 @@ package com.pvteks.mvstuff
 /*
  * TODO:
  * 
- * fix the package object mess: one level out, please.
- * 
- * progress indication on creation of large indexes
+ * wtf is up with the ./ stuff
  * 
  */
-object `mvstuff` extends `mvstuff` 
+package com.pvteks.mvstuff
+
+// object `package` extends `package`
+/*
+ * note: package object stuff doesn't quite work out
+ * 
+ *  since breakpoints cannot be set within objects, would like to put functionality 
+ *  in a companion class
+ * 
+ *  but then nested classes and the implicit conversions to nested classes aren't "seen" 
+ *  unless the clients use
+ *  
+ *      import com.blah.`package`._
+ * 
+ *  further, the Eclipse IDE is unhappy with the arrangement; scala plugin generates spurious
+ *  syntax errors involving non-existent circular references to `package` class - these disappear
+ *  when project is cleaned, and do not appear from scalac command line invocation.
+ *  (and yes, I tried using a file "package.scala")
+ * 
+ *  attempts to work around these limitations are postponed until basic functionality 
+ *  is more stable.
+ *  
+ *  suggested approach is a small dedicated test project which can be used as example in mailing
+ *  list posting.  
+ */
+
+object MvStuff extends MvStuff
 
 /**
  * Since we can't set breakpoints within objects, this is how we roll. Yo. 
  */
-class `mvstuff` private[mvstuff] {
+class MvStuff private[mvstuff] {
 
   import scala.collection.mutable
   import scala.Console._
@@ -170,9 +192,12 @@ class `mvstuff` private[mvstuff] {
    */
   import util.matching._
   class RegexFileFilter(regex: Regex) extends FileFilter {
-    def accept(f: File): Boolean = regex.findPrefixOf(f.getPath) match {
-      case Some(s) if (s.length == f.getPath.length) => true    // full match
-      case _ => false
+    def accept(f: File): Boolean = {
+      val path = f.getPath stripPrefix ("." +/)
+      regex.findPrefixOf(path) match {
+        case Some(s) if (s.length == path.length) => true    // full match
+        case _ => false
+      }
     }
   }
 
@@ -366,7 +391,7 @@ class `mvstuff` private[mvstuff] {
           else Nil
         }
       }
-      var files = processDir(new File("."))
+      val files = processDir(new File("."))
       for (file <- files.sortWith(_.file.lastModified < _.file.lastModified)) { 
         indexAndCopyFrom(file, deleteSource) 
       }

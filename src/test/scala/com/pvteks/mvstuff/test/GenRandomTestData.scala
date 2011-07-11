@@ -38,9 +38,11 @@
 
 */
 
-package com.pvteks.mvstuff
+package com.pvteks.mvstuff.test
 
-import mvstuff._
+// import com.pvteks.mvstuff._
+import com.pvteks.mvstuff.MvStuff._
+
 import java.io._
 
 /*

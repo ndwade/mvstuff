@@ -37,7 +37,11 @@
     POSSIBILITY OF SUCH DAMAGE. 
 
 */
-package com.pvteks.mvstuff
+package com.pvteks.mvstuff.test
+
+// import com.pvteks.mvstuff._
+// import com.pvteks.mvstuff._
+import com.pvteks.mvstuff.MvStuff._
 
 import org.scalatest.junit.{ JUnitSuite, ShouldMatchersForJUnit }
 import org.scalatest.prop.{ Checkers }
@@ -55,8 +59,6 @@ import java.io.{ Console => _, _ }
  */
 class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   
-  import mvstuff._
-
   def sha1_s2bv(sha1: String): Vector[Byte] = {
     
     def hex2byte(hex: String):Byte = {
@@ -140,14 +142,14 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
 
   val allFiles = txts ++ jnks 
 
-  private def walk(ff: FileFilter, dir: String = "files") = {
+  private def walk(ff: FileFilter) = {
     var files = List[File]()
     def walk(dir: File) {
       require (dir.exists && dir.isDirectory && dir.canRead)
       for (file <- dir.listFiles(ff)) files ::= file
       for (file <- dir.listFiles; if (file.isDirectory)) walk(file)
     }
-    walk(new File(dir))
+    walk(new File("files"))
     val set = files.map(_.getPath).toSet
     files.size should equal (set.size)        // no dups! path names enforce this.
     set
@@ -160,7 +162,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     walk(new ExtensionFileFilter("tXt", "jnK")) should equal (txts ++ jnks)
   }
   
-  val xfileRx = (".*files" +/+ "x" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
+  val xfileRx = ("files" +/+ "x" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
   val rxff = new RegexFileFilter(xfileRx)
   
   @Test def regexFileFilter() {
@@ -192,7 +194,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     _testabilityDate = Some(new java.util.Date)
     
     val idd = IndexedDestDir("temp")
-    idd cpstuff ("." +/+ "files" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
+    idd cpstuff ("files" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
     resultFiles should equal (expected)
     idd.dups should equal (3)
     idd.inspectIndex()
@@ -201,7 +203,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val idd2 = IndexedDestDir("temp")
     println("idd2-pre")
     idd2.inspectIndex
-    idd2 cpstuff ("." +/+ "files" +/+ ".*_copy\\.(?i:jnk|TXT)").fixupR.r
+    idd2 cpstuff ("files" +/+ ".*_copy\\.(?i:jnk|TXT)").fixupR.r
     resultFiles should equal (expected)
     idd2.dups should equal (3)
     println("idd2-post")
