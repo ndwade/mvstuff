@@ -142,12 +142,15 @@ class MvStuff private[mvstuff] {
 
   private def now = new java.util.Date
   private lazy val ymd_HM = "ymd_HM".flatMap(c => if (c == '_') "" + c else "%1$t" + c)
-  var _testabilityDate: Option[java.util.Date] = None      // for testability
+  
+  private[mvstuff] def testabilityDate = _testabilityDate
+  private[mvstuff] def testabilityDate_=(date: java.util.Date) { _testabilityDate = Some(date) }
+  private[this] var _testabilityDate: Option[java.util.Date] = None
   /**
    * Date as yymmdd_HHMM.
    */
   def dateString: String = {
-    val date = _testabilityDate match { case Some(testingDate) => testingDate; case None => now }
+    val date = testabilityDate match { case Some(testingDate) => testingDate; case None => now }
     date formatted ymd_HM
   }
 
@@ -157,12 +160,12 @@ class MvStuff private[mvstuff] {
   class SourceFile(val file: File) {
     require(file.exists)
     val digest = mkDigest(file)
-    val path = file.getParent stripPrefix ("." +/)
     val outFileName = 
-            dateString + '-' + 
-            path.replace(File.separator, "-") + '-' + 
+            dateString + '-' + {
+              if (file.getParent == ".") "" 
+              else (file.getParent stripPrefix ("." +/)).replace(File.separator, "-") + '-' 
+            } +
             esc(file.getName)
-            
   }
   
   object SourceFile {
@@ -284,32 +287,49 @@ class MvStuff private[mvstuff] {
     }
   }
   
+  def lsR(
+      path: String = ".",
+      ff: FileFilter = new FileFilter { def accept(f: File) = true }
+    ): List[File] = lsR(new File(path), ff)
+    
+  def lsR(dir: File, ff: FileFilter): List[File] = {
+    require (dir.exists && dir.isDirectory && dir.canRead)
+    dir.listFiles.toList flatMap { file =>
+      if (file.isDirectory) lsR(file, ff)
+      else if (ff accept file) List(file)
+      else Nil
+    }
+  }
+  
   /**
    * Represents and indexed directory. Files are stored flat in the directory (we rely on Spotlight
    * to find stuff), and duplicates are elminated by checking against an index of sha1 digests.
    */
-  class IndexedDestDir private (val dir: File) {
+  class IndexedDestDir private (val dir: File, private[this] var _verbose: Boolean) {
 
-    def this(name: String) = this(new File(name))
-    
     require (dir.exists && dir.isDirectory && dir.canRead && dir.canWrite)
+    
+    def verbose = _verbose
+    def verbose_=(v: Boolean) { _verbose = v }
     
     val dm = mutable.Map[Vector[Byte],  String]()
     val index = new File(dir, indexName)
 
     if (!index.exists) {
+      println(dir.getPath + ": creating index...")
       insist(index.createNewFile())                     // ensures index file is in index as entry
       val dos = new DataOutputStream(new FileOutputStream(index))
       withFlushable(dos) {
-        for (file <- dir.listFiles; if (file.isFile)) {
+        for (file <- dir.listFiles; if (file.isFile && !file.isHidden)) {
           writeEntry(dos, file.digest, file.getName)
           dm(file.digest) = file.getName
         }
       }
-      println(dir.getName + ": wrote digest db for " + dm.size + " files")
+      println(dir.getPath + ": wrote digest db for " + dm.size + " files")
     }
     // sic
     {
+      println(dir.getPath + ": reading index...")
       val dis = new DataInputStream(new FileInputStream(index))
       val digestBuffer = new Array[Byte](20)
       def readEntry() = {
@@ -317,12 +337,13 @@ class MvStuff private[mvstuff] {
         if (n == -1) throw new java.io.EOFException     // intentional flow control
         val digest = Vector(digestBuffer:_*) 
         val name = dis.readUTF()
-        err.println("read entry " + digest.toHexString + " -> " + name)
+        if (verbose) println("  read entry " + digest.toHexString + " -> " + name)
         (digest, name)
       }
       withCloseable(dis) { 
         try { while (true) dm += readEntry() } catch { case _:  EOFException => () }
       }
+      println(dir.getPath + ": read " + dm.size + " index entries")
     }
 
     private[this] val dos = new DataOutputStream(new FileOutputStream(index, true))
@@ -348,9 +369,9 @@ class MvStuff private[mvstuff] {
           err.println("failed to copy " + src.getPath + " to " + dest.getPath)
           return
         } else {
+          println("copied " + src.getPath + " to " + dest.getPath)
           writeEntry(dos, src.digest, src.outFileName)
           dm(src.digest) = src.outFileName
-          err.println("copied " + src.getPath + " to " + dest.getPath)
           _copied += 1
         }
       }
@@ -391,11 +412,12 @@ class MvStuff private[mvstuff] {
           else Nil
         }
       }
-      val files = processDir(new File("."))
-      for (file <- files.sortWith(_.file.lastModified < _.file.lastModified)) { 
-        indexAndCopyFrom(file, deleteSource) 
+      withFlushable(this) {
+        val files = processDir(new File("."))
+        for (file <- files.sortWith(_.file.lastModified < _.file.lastModified)) { 
+          indexAndCopyFrom(file, deleteSource) 
+        }
       }
-      flush(); close()
       println("copied " + copied + " files to " + dir)
     }
       
@@ -408,10 +430,12 @@ class MvStuff private[mvstuff] {
       require (digest.size == 20)
       dos.write(digest.toArray, 0, 20)
       dos.writeUTF(name)
+      if (verbose) println("  writing entry " + digest.toHexString + " -> " + name)
     }
   }
     
   object IndexedDestDir {
-    def apply(name: String) = new IndexedDestDir(new File(name))
+    def apply(name: String, verbose: Boolean = false) = 
+      new IndexedDestDir(new File(name), verbose)
   }
 }

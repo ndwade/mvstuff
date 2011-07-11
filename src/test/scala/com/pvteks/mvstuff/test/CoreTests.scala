@@ -142,31 +142,25 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
 
   val allFiles = txts ++ jnks 
 
-  private def walk(ff: FileFilter) = {
-    var files = List[File]()
-    def walk(dir: File) {
-      require (dir.exists && dir.isDirectory && dir.canRead)
-      for (file <- dir.listFiles(ff)) files ::= file
-      for (file <- dir.listFiles; if (file.isDirectory)) walk(file)
-    }
-    walk(new File("files"))
+  private def pathSet(path: String, ff: FileFilter): Set[String] = {
+    val files = lsR(path, ff)
     val set = files.map(_.getPath).toSet
     files.size should equal (set.size)        // no dups! path names enforce this.
     set
   }
 
   @Test def extensionFileFilter() {
-    walk(new ExtensionFileFilter("txt")) should equal (txts)
-    walk(new ExtensionFileFilter("TxT")) should equal (txts)
-    walk(new ExtensionFileFilter("jnk")) should equal (jnks)
-    walk(new ExtensionFileFilter("tXt", "jnK")) should equal (txts ++ jnks)
+    pathSet("files", new ExtensionFileFilter("txt")) should equal (txts)
+    pathSet("files", new ExtensionFileFilter("TxT")) should equal (txts)
+    pathSet("files", new ExtensionFileFilter("jnk")) should equal (jnks)
+    pathSet("files", new ExtensionFileFilter("tXt", "jnK")) should equal (txts ++ jnks)
   }
   
   val xfileRx = ("files" +/+ "x" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
   val rxff = new RegexFileFilter(xfileRx)
   
   @Test def regexFileFilter() {
-    walk(rxff) should equal (xfiles)
+    pathSet("files", rxff) should equal (xfiles)
   }
   
   def resultFiles = {
@@ -175,9 +169,8 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   }
   @Test def indexedDestDirNoDups() {
     
+    testabilityDate = new java.util.Date
     val xpected = (xfiles) map { dateString + '-' + _.replace(File.separator, "-") }
-    
-    _testabilityDate = Some(new java.util.Date)
 
     val idd = IndexedDestDir("temp")
     idd cpstuff xfileRx
@@ -189,9 +182,8 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   
   @Test def indexedDestDirAll() {
     
+    testabilityDate = new java.util.Date
     val expected = (allFiles -- allDups) map { dateString + '-' + _.replace(File.separator, "-") }
-    
-    _testabilityDate = Some(new java.util.Date)
     
     val idd = IndexedDestDir("temp")
     idd cpstuff ("files" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
