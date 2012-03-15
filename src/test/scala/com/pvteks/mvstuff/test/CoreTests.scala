@@ -75,6 +75,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     mkdir("files")
     cpTree("golden", "files")
   }
+  
   @Test def digest() {
 
     println(sys.props("user.dir"))

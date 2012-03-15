@@ -103,8 +103,8 @@ class MvStuff private[mvstuff] {
   private def esc(s: String): String = """([ (){}\\$&#;])""".r.replaceAllIn(s, """\""" + _)
   
   case class PathString(string: String) {
-    def +/+ (that: String): String = string + File.separatorChar + that   
     def +/ = string + File.separatorChar
+    def +/+ (that: String) = string.+/ + that   
     def fixupR = if (File.separatorChar == '\\') string.replace("\\", "\\\\") else string
   }
   implicit def string2pathstring(string: String) = PathString(string)
@@ -131,7 +131,7 @@ class MvStuff private[mvstuff] {
       val is = new DigestInputStream(new BufferedInputStream(new FileInputStream(file)), md)
       val buffer = new Array[Byte](4096)
       withCloseable(is) { while (is.read(buffer) != -1) {} }
-      Vector(md.digest():_*)
+      Vector(md.digest(): _*)
   }
   
   case class Digest(digest: Vector[Byte]) {
@@ -141,7 +141,7 @@ class MvStuff private[mvstuff] {
   implicit def bv2digest(bv: Vector[Byte]) = Digest(bv)
 
   private def now = new java.util.Date
-  private lazy val ymd_HM = "ymd_HM".flatMap(c => if (c == '_') "" + c else "%1$t" + c)
+  private lazy val ymd_HM = "ymd_HM" flatMap (c => if (c == '_') "" + c else "%1$t" + c)
   
   private[mvstuff] def testabilityDate = _testabilityDate
   private[mvstuff] def testabilityDate_=(date: java.util.Date) { _testabilityDate = Some(date) }
@@ -149,10 +149,8 @@ class MvStuff private[mvstuff] {
   /**
    * Date as yymmdd_HHMM.
    */
-  def dateString: String = {
-    val date = testabilityDate match { case Some(testingDate) => testingDate; case None => now }
-    date formatted ymd_HM
-  }
+  def dateString: String = testabilityDate getOrElse now formatted ymd_HM
+  
 
   /**
    * A pimped <code>File</code>, with digest and destination name.
@@ -292,13 +290,13 @@ class MvStuff private[mvstuff] {
       ff: FileFilter = new FileFilter { def accept(f: File) = true }
     ): List[File] = lsR(new File(path), ff)
     
-  def lsR(dir: File, ff: FileFilter): List[File] = {
-    require (dir.exists && dir.isDirectory && dir.canRead)
-    dir.listFiles.toList flatMap { file =>
-      if (file.isDirectory) lsR(file, ff)
-      else if (ff accept file) List(file)
-      else Nil
-    }
+  def lsR(maybeDir: File, ff: FileFilter): List[File] = {
+    require (maybeDir.exists && maybeDir.canRead)
+    if (!maybeDir.isDirectory) {
+      if (ff accept maybeDir) List(maybeDir) else Nil
+    } else {
+      maybeDir.listFiles.toList flatMap (lsR(_, ff))
+    }    
   }
   
   /**
