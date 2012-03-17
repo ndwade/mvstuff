@@ -9,4 +9,5 @@ src/test/resources/temp/
 .project
 .scala_dependencies
 .classpath
+.cache
 

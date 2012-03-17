@@ -330,7 +330,7 @@ class MvStuff private[mvstuff] {
       def readEntry() = {
         val n = dis.read(digestBuffer)
         if (n == -1) throw new java.io.EOFException     // intentional flow control
-        val digest = Vector(digestBuffer:_*) 
+        val digest = Vector(digestBuffer: _*) 
         val name = dis.readUTF()
         if (verbose) println("  read entry " + digest.toHexString + " -> " + name)
         (digest, name)
@@ -374,6 +374,25 @@ class MvStuff private[mvstuff] {
         err.println("failed to delete " + src.getPath)
     }
     
+    private def dostuff(ff: FileFilter, deleteSource: Boolean) {
+      withFlushable(this) {
+        lsR(".", ff) sortWith (_.file.lastModified < _.file.lastModified) map { indexAndCopyFrom(_, deleteSource) }
+      } 
+      println("copied " + copied + " files to " + dir)
+    }
+      
+    def inspectIndex() { for ((digest, name) <- dm) println(digest.toHexString + " -> " + name) }
+    
+    def flush() { dos.flush() }
+    def close() { dos.close() }
+    
+    private[this] def writeEntry(dos: DataOutputStream, digest: Vector[Byte], name: String) {
+      require (digest.size == 20)
+      dos.write(digest.toArray, 0, 20)
+      dos.writeUTF(name)
+      if (verbose) println("  writing entry " + digest.toHexString + " -> " + name)
+    }
+    
     @inline def !+>>: (exts: String*)   { mvstuff(exts:_*) }
     @inline def !+>>: (regex: Regex)    { mvstuff(regex) }
     @inline def !+>>: (ff: FileFilter)  { mvstuff(ff) }
@@ -396,37 +415,7 @@ class MvStuff private[mvstuff] {
     
     @inline def cpstuff(exts: String*)  { cpstuff(new ExtensionFileFilter(exts:_*)) }
     @inline def cpstuff(regex: Regex)   { cpstuff(new RegexFileFilter(regex)) }
-    @inline def cpstuff(ff: FileFilter) { dostuff(ff, false) }
-    
-    private def dostuff(ff: FileFilter, deleteSource: Boolean) {
-      def processDir(dir: File): List[File] = {
-        require(dir.exists && dir.isDirectory && dir.canRead)
-        dir.listFiles.toList.flatMap { file =>
-          if (ff accept file) List(file)
-          else if (file.isDirectory) processDir(file)
-          else Nil
-        }
-      }
-      withFlushable(this) {
-        val files = processDir(new File("."))
-        for (file <- files.sortWith(_.file.lastModified < _.file.lastModified)) { 
-          indexAndCopyFrom(file, deleteSource) 
-        }
-      }
-      println("copied " + copied + " files to " + dir)
-    }
-      
-    def inspectIndex() { for ((digest, name) <- dm) println(digest.toHexString + " -> " + name) }
-    
-    def flush() { dos.flush() }
-    def close() { dos.close() }
-    
-    private[this] def writeEntry(dos: DataOutputStream, digest: Vector[Byte], name: String) {
-      require (digest.size == 20)
-      dos.write(digest.toArray, 0, 20)
-      dos.writeUTF(name)
-      if (verbose) println("  writing entry " + digest.toHexString + " -> " + name)
-    }
+    @inline def cpstuff(ff: FileFilter) { dostuff(ff, false) }    
   }
     
   object IndexedDestDir {
