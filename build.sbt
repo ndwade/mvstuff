@@ -2,11 +2,11 @@ name := "mvtuff"
 
 version := "0.1"
 
-scalaVersion := "2.9.0"
+scalaVersion := "2.9.1"
 
-fork in run := true
+// fork in run := true
 
-baseDirectory in run := file("/Users/ndw/dev/mvstuff/src/test/resources")
+// baseDirectory in run := file("/Users/ndw/dev/mvstuff/src/test/resources")
 
 // Add multiple dependencies
 libraryDependencies ++= Seq(

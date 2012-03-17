@@ -68,12 +68,23 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     Vector(sha1.sliding(2, 2).map(hex2byte(_)).toSeq:_*)
   }
   
+  def cpAndSetLastModified(src: String, dest: String) {
+    val sf = new File("files" +/+ src)
+    val df = new File("files" +/+ dest)
+    cp(sf, df)
+    sf.setLastModified(df.lastModified - 1)
+    assert(sf.lastModified() < df.lastModified())
+  }
+  
   @Before def setup() {
     rmRfd("temp")
     rmRfd("files")
     mkdir("temp")
     mkdir("files")
     cpTree("golden", "files")
+    cpAndSetLastModified("x" +/+ "foo.jnk", "foo_copy.jnk")
+    cpAndSetLastModified("blah.jnk", "x" +/+ "blah_copy.jnk")
+    cpAndSetLastModified("a.txt", "x" +/+ "y" +/+ "a_copy.txt")
   }
   
   @Test def digest() {
