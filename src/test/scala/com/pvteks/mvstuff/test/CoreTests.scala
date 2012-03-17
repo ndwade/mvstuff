@@ -69,6 +69,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   }
   
   @Before def setup() {
+    Console.err.println(sys.props("user.dir"))
     rmRfd("temp")
     rmRfd("files")
     mkdir("temp")
@@ -157,7 +158,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     pathSet("files", new ExtensionFileFilter("tXt", "jnK")) should equal (txts ++ jnks)
   }
   
-  val xfileRx = ("files" +/+ "x" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
+  val xfileRx = ("files" +/+ "x" +/+ ".*\\.(?i:jnk|TXT)").escFileSep.r
   val rxff = new RegexFileFilter(xfileRx)
   
   @Test def regexFileFilter() {
@@ -187,7 +188,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val expected = (allFiles -- allDups) map { dateString + '-' + _.replace(File.separator, "-") }
     
     val idd = IndexedDestDir("temp")
-    idd cpstuff ("files" +/+ ".*\\.(?i:jnk|TXT)").fixupR.r
+    idd cpstuff ("files" +/+ ".*\\.(?i:jnk|TXT)").escFileSep.r
     resultFiles should equal (expected)
     idd.dups should equal (3)
     idd.inspectIndex()
@@ -196,7 +197,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val idd2 = IndexedDestDir("temp")
     println("idd2-pre")
     idd2.inspectIndex
-    idd2 cpstuff ("files" +/+ ".*_copy\\.(?i:jnk|TXT)").fixupR.r
+    idd2 cpstuff ("files" +/+ ".*_copy\\.(?i:jnk|TXT)").escFileSep.r
     resultFiles should equal (expected)
     idd2.dups should equal (3)
     println("idd2-post")

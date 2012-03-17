@@ -105,7 +105,7 @@ class MvStuff private[mvstuff] {
   case class PathString(string: String) {
     def +/ = string + File.separatorChar
     def +/+ (that: String) = string.+/ + that   
-    def fixupR = if (File.separatorChar == '\\') string.replace("\\", "\\\\") else string
+    def escFileSep = if (File.separatorChar == '\\') string.replace("\\", "\\\\") else string
   }
   implicit def string2pathstring(string: String) = PathString(string)
 
@@ -195,10 +195,7 @@ class MvStuff private[mvstuff] {
   class RegexFileFilter(regex: Regex) extends FileFilter {
     def accept(f: File): Boolean = {
       val path = f.getPath stripPrefix ("." +/)
-      regex.findPrefixOf(path) match {
-        case Some(s) if (s.length == path.length) => true    // full match
-        case _ => false
-      }
+      regex.findPrefixOf(path) map (_.length == path.length) getOrElse false
     }
   }
 
