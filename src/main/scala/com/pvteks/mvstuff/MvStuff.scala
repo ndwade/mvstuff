@@ -98,8 +98,6 @@ class MvStuff private[mvstuff] {
    */
   private val indexName = ".mvstuff-index"
 
-  private val md = MessageDigest.getInstance("SHA")
-
   private def esc(s: String): String = """([ (){}\\$&#;])""".r.replaceAllIn(s, """\""" + _)
   
   class PathString(string: String) {
@@ -126,6 +124,8 @@ class MvStuff private[mvstuff] {
   /**
    * Make a sha1 digest for a <code>File</code>
    */
+  private val md = MessageDigest.getInstance("SHA")
+
   def mkDigest(file: File): Vector[Byte] = {
       md.reset()
       val is = new DigestInputStream(new BufferedInputStream(new FileInputStream(file)), md)
@@ -155,24 +155,22 @@ class MvStuff private[mvstuff] {
   /**
    * A pimped <code>File</code>, with digest and destination name.
    */
-  class SourceFile(val file: File) {
+  class SourceFile(_file: File, val rootPath: String) {
+    val file = _file.getCanonicalFile
     require(file.exists)
+    lazy val relativePath = file.getPath.stripPrefix(rootPath)
+    lazy val flatName = dateString + '-' + {
+      file.getParent.stripPrefix(rootPath).replace(File.separator, "-") + '-'
+    } + esc(file.getName)
     val digest = mkDigest(file)
-    val outFileName = 
-            dateString + '-' + {
-              if (file.getParent == ".") "" 
-              else (file.getParent stripPrefix ("." /)).replace(File.separator, "-") + '-' 
-            } +
-            esc(file.getName)
   }
   
-  object SourceFile {
-      def apply(file: File) = new SourceFile(file)
-      def apply(name: String) = new SourceFile(new File(name))
+  object SourceFileImplicits {
+    // implicit val defaultRootPath = ""
+    implicit def file2sourceFile(file: File)(implicit evrp: String = "") = new SourceFile(file, evrp)
+    implicit def sourceFile2file(srcf: SourceFile) = srcf.file
   }
-  
-  implicit def file2sourceFile(file: File) = new SourceFile(file)
-  implicit def sourceFile2file(srcf: SourceFile) = srcf.file
+  import SourceFileImplicits._
  
   /** 
    * A list of file extensions as a <code>FileFilter</code>.
@@ -186,15 +184,15 @@ class MvStuff private[mvstuff] {
       if (dot != -1) extensions contains ((f.getName substring dot).toLowerCase) else false
     }
   }
-  
-  // import scala.util.matching._
   /**
    * A generalized <code>Regex FileFilter</code>.
    */
+  def pwd = (new File(".")).getCanonicalPath/
+  
   import util.matching._
-  class RegexFileFilter(regex: Regex) extends FileFilter {
+  class RegexFileFilter(regex: Regex)(implicit evrp: String = pwd) extends FileFilter {
     def accept(f: File): Boolean = {
-      val path = f.getPath stripPrefix ("." /)
+      val path = f.relativePath
       regex.findPrefixOf(path) map (_.length == path.length) getOrElse false
     }
   }
@@ -281,11 +279,11 @@ class MvStuff private[mvstuff] {
    src.listFiles.map(_cpt(_, dest)).fold(true)(_ & _) 
   }
   
-  def lsR(path: String = ".",
-          ff: FileFilter = new FileFilter { def accept(f: File) = true }): List[File] = 
-    lsR(new File(path), ff)
-    
-  def lsR(maybeDir: File, ff: FileFilter): List[File] = {
+//  def lsR(path: String = ".",
+//          ff: FileFilter = new FileFilter { def accept(f: File) = true }): List[File] = 
+//    lsR(new File(path), ff)
+//    
+  def lsR(maybeDir: File, ff: FileFilter)(implicit evrp: String = ""): List[File] = {
     require (maybeDir.exists && maybeDir.canRead)
     if (!maybeDir.isDirectory) {
       if (ff accept maybeDir) List(maybeDir) else Nil
@@ -297,10 +295,21 @@ class MvStuff private[mvstuff] {
   /**
    * Represents and indexed directory. Files are stored flat in the directory (we rely on Spotlight
    * to find stuff), and duplicates are elminated by checking against an index of sha1 digests.
+   *
+   * new features:
+   * - allow specification of source dir (removes need for running in same dir as source)
+   * - make recursive traversal of source directories optional
+   * - make flattening of dest tree optional.
+   * 
+   * "sub/stuff"
    */
   class IndexedDestDir private (val dir: File, private[this] var _verbose: Boolean) {
 
     require (dir.exists && dir.isDirectory && dir.canRead && dir.canWrite)
+    
+    val srcDir = new File(".").getCanonicalFile
+    err.println(srcDir)
+    implicit val rp = srcDir.getPath/
     
     def verbose = _verbose
     def verbose_=(v: Boolean) { _verbose = v }
@@ -347,24 +356,21 @@ class MvStuff private[mvstuff] {
     private[this] var _dups = 0;
     def dups: Int = _dups
     
-    def indexAndMoveFrom(src: SourceFile) {
-      indexAndCopyFrom(src, true)
-    }
-    
     def indexAndCopyFrom(src: SourceFile, deleteSource: Boolean = false) {
+      err.println("file: " + src.file + " rp: " + src.rootPath)
       if (dm contains src.digest) {
         _dups += 1
         println("dup: " + src.getPath + " is identical to " + dm(src.digest))
       } else {
-        val dest = new File(dir, src.outFileName)
+        val dest = new File(dir, src.flatName)
         val ok = deleteSource && (src renameTo dest) || cp(src, dest)
         if (!ok) { 
           err.println("failed to copy " + src.getPath + " to " + dest.getPath)
           return
         } else {
           println("copied " + src.getPath + " to " + dest.getPath)
-          writeEntry(dos, src.digest, src.outFileName)
-          dm(src.digest) = src.outFileName
+          writeEntry(dos, src.digest, src.flatName)
+          dm(src.digest) = src.flatName
           _copied += 1
         }
       }
@@ -374,7 +380,10 @@ class MvStuff private[mvstuff] {
     
     private def dostuff(ff: FileFilter, deleteSource: Boolean) {
       withFlushable(this) {
-        lsR(".", ff) sortWith (_.file.lastModified < _.file.lastModified) map { indexAndCopyFrom(_, deleteSource) }
+                
+        lsR(srcDir, ff) sortWith (_.file.lastModified < _.file.lastModified) map { 
+          indexAndCopyFrom(_, deleteSource) 
+        }
       } 
       println("copied " + copied + " files to " + dir)
     }

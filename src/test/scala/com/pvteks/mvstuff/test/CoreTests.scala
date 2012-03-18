@@ -59,6 +59,8 @@ import java.io.{ Console => _, _ }
  */
 class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   
+  import SourceFileImplicits._
+  
   def sha1_s2bv(sha1: String): Vector[Byte] = {
     
     def hex2byte(hex: String):Byte = {
@@ -69,6 +71,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   }
   
   def cpAndSetLastModified(src: String, dest: String) {
+    
     val sf = new File("files" / src)
     val df = new File("files" / dest)
     cp(sf, df)
@@ -102,7 +105,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   }
   
   @Test def cpMkdirRmRfd() {
-    
+        
     val fDir = new File("temp")
     (fDir.exists && fDir.isDirectory) should be (true) 
     
@@ -155,7 +158,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   val allFiles = txts ++ jnks 
 
   private def pathSet(path: String, ff: FileFilter): Set[String] = {
-    val files = lsR(path, ff)
+    val files = lsR(new File(path), ff)
     val set = files.map(_.getPath).toSet
     files.size should equal (set.size)        // no dups! path names enforce this.
     set
