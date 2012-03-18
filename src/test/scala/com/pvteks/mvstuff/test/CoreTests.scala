@@ -92,8 +92,6 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   
   @Test def digest() {
 
-    println(sys.props("user.dir"))
-
     val a = new File("files" / "a.txt")
     mkDigest(a) should equal (sha1_s2bv("4bae196a7ed6a46e68ca300d5a24f05f48bf7f10"))     // from sha1sum
 

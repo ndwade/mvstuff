@@ -157,17 +157,17 @@ class MvStuff private[mvstuff] {
    */
   class SourceFile(_file: File, val rootPath: String) {
     val file = _file.getCanonicalFile
-    require(file.exists)
-    lazy val relativePath = file.getPath.stripPrefix(rootPath)
+    require(file.exists && file.canRead)
+    lazy val relativePath = file.getPath.stripPrefix(rootPath/)
     lazy val flatName = dateString + '-' + {
-      file.getParent.stripPrefix(rootPath).replace(File.separator, "-") + '-'
+      file.getParent.stripPrefix(rootPath/).replace(File.separator, "-") + '-'
     } + esc(file.getName)
     val digest = mkDigest(file)
   }
   
   object SourceFileImplicits {
-    // implicit val defaultRootPath = ""
-    implicit def file2sourceFile(file: File)(implicit evrp: String = "") = new SourceFile(file, evrp)
+    implicit def file2sourceFile(file: File)(implicit evrp: String = ""/) = 
+      new SourceFile(file, evrp)
     implicit def sourceFile2file(srcf: SourceFile) = srcf.file
   }
   import SourceFileImplicits._
@@ -187,7 +187,7 @@ class MvStuff private[mvstuff] {
   /**
    * A generalized <code>Regex FileFilter</code>.
    */
-  def pwd = (new File(".")).getCanonicalPath/
+  def pwd = (new File(".")).getCanonicalPath
   
   import util.matching._
   class RegexFileFilter(regex: Regex)(implicit evrp: String = pwd) extends FileFilter {
@@ -308,8 +308,7 @@ class MvStuff private[mvstuff] {
     require (dir.exists && dir.isDirectory && dir.canRead && dir.canWrite)
     
     val srcDir = new File(".").getCanonicalFile
-    err.println(srcDir)
-    implicit val rp = srcDir.getPath/
+    implicit val rp = srcDir.getPath
     
     def verbose = _verbose
     def verbose_=(v: Boolean) { _verbose = v }
