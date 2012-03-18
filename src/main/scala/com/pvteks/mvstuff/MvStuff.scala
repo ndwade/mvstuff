@@ -102,12 +102,12 @@ class MvStuff private[mvstuff] {
 
   private def esc(s: String): String = """([ (){}\\$&#;])""".r.replaceAllIn(s, """\""" + _)
   
-  case class PathString(string: String) {
-    def +/ = string + File.separatorChar
-    def +/+ (that: String) = string.+/ + that   
-    def escFileSep = if (File.separatorChar == '\\') string.replace("\\", "\\\\") else string
+  class PathString(string: String) {
+    def / : String = string + File.separatorChar
+    def / (that: String): String = string./ + that   
+    def escFileSep = if (File.separatorChar == '\\') string.replace("""\""", """\\""") else string
   }
-  implicit def string2pathstring(string: String) = PathString(string)
+  implicit def string2pathstring(string: String) = new PathString(string)
 
   type Closeable = { def close(): Unit } 
   def withCloseable[C <: Closeable](c: C)(body: => Unit) {
@@ -161,7 +161,7 @@ class MvStuff private[mvstuff] {
     val outFileName = 
             dateString + '-' + {
               if (file.getParent == ".") "" 
-              else (file.getParent stripPrefix ("." +/)).replace(File.separator, "-") + '-' 
+              else (file.getParent stripPrefix ("." /)).replace(File.separator, "-") + '-' 
             } +
             esc(file.getName)
   }
@@ -194,22 +194,24 @@ class MvStuff private[mvstuff] {
   import util.matching._
   class RegexFileFilter(regex: Regex) extends FileFilter {
     def accept(f: File): Boolean = {
-      val path = f.getPath stripPrefix ("." +/)
+      val path = f.getPath stripPrefix ("." /)
       regex.findPrefixOf(path) map (_.length == path.length) getOrElse false
     }
   }
 
-  def mkdir(name: String) { mkdir (new File(name)) }
+  def mkdir(name: String): File = { mkdir(new File(name)) }
   
-  def mkdir(dir: File) {
-    if (!dir.mkdir()) throw new RuntimeException("can't make " + dir)  
+  def mkdir(dir: File) = {
+    if (!dir.mkdir()) throw new RuntimeException("can't make " + dir)
+    dir
   }
 
-  def rm(path: String):Boolean = rm(new File(path))
+  def rm(path: String): Boolean = rm(new File(path))
   
   def rm(file: File): Boolean = {
+    val kind = if (file.isDirectory) "dir " else "file "
     val ok= file.delete() 
-    if (!ok) err.println("could not delete file " + file)
+    if (!ok) err.println("could not delete " + kind + file)
     ok
   }
   
@@ -220,27 +222,22 @@ class MvStuff private[mvstuff] {
     val dir = new File(dirPath);
     dir.exists && dir.isDirectory && dir.canRead && rmRfd(dir)
   }
-  
-  def rmRfd(dir: File): Boolean = {
-    require (dir.exists && dir.isDirectory && dir.canRead)
-    var ok = true
-    for (file <- dir.listFiles) {
-      if (file.isDirectory) ok &= rmRfd(file)
-      else ok &= file.delete()
-    }
-    ok &= dir.delete()
-    if (!ok) err.println("could not delete dir " + dir)
-    ok
+
+  def rmRfd(file: File): Boolean = {
+    require (file.exists && file.canRead)
+    val ok = if (file.isDirectory) file.listFiles.map(rmRfd(_)).fold(true){ _ & _ } else true
+    ok & rm(file)
   }
   
   /**
    * Only remove empty(ish) directories.
    */
-  def rmEmptyDirs(dir: File) {
-    for (d <- dir.listFiles; if (d.isDirectory)) rmEmptyDirs(d)
+  def rmEmptyDirs(dir: File): Boolean = {
+    require (dir.exists && dir.isDirectory && dir.canRead)
+    val ok = dir.listFiles.filter(_.isDirectory).map(rmEmptyDirs(_)).fold(true){ _ & _ }
     val dss = new File(dir, ".DS_Store")        // Finder love!
     if (dss.exists) rm(dss)
-    if (dir.list.isEmpty) rm(dir) else println("NotEmpty? : " + dir)
+    ok & (if (dir.list.isEmpty) rm(dir) else { err.println("NotEmpty? : " + dir); false })
   }
   
   /**
@@ -264,28 +261,29 @@ class MvStuff private[mvstuff] {
   }  
   
   /**
-   * copy a whole tree. TODO: reconsider the whole naming thing...  
+   * copy a whole tree. 
    */
-  def cpTree(from: String, to: String) { cpTree(new File(from), new File(to)) }
+  def cpTree(from: String, to: String): Boolean = { cpTree(new File(from), new File(to)) }
   
-  def cpTree(from: File, to: File) {
-    require (from.exists && from.isDirectory && from.canRead)
-    require (to.exists && to.isDirectory && to.canRead && to.canWrite)
-    for (file <- from.listFiles) {
-      if (file.isDirectory) { 
-        val subTo = new File(to, file.getName); 
-        mkdir(subTo); 
-        cpTree(file, subTo) 
+  def cpTree(src: File, dest: File): Boolean = {
+    require (src.exists && src.isDirectory && src.canRead)
+    require (dest.exists && dest.isDirectory && dest.canRead && dest.canWrite)
+    def _cpt(src: File, dest: File): Boolean = {
+      require (src.exists && src.canRead)
+      require (dest.exists && dest.isDirectory && dest.canRead && dest.canWrite)
+      if (!src.isDirectory) {
+        cp(src, new File(dest, src.getName))
       } else {
-        cp(file, new File(to, file.getName))
+        val subDest = mkdir(new File(dest, src.getName))
+        src.listFiles map { _cpt(_, subDest) } reduce (_ & _) 
       }
     }
+   src.listFiles.map(_cpt(_, dest)).fold(true)(_ & _) 
   }
   
-  def lsR(
-      path: String = ".",
-      ff: FileFilter = new FileFilter { def accept(f: File) = true }
-    ): List[File] = lsR(new File(path), ff)
+  def lsR(path: String = ".",
+          ff: FileFilter = new FileFilter { def accept(f: File) = true }): List[File] = 
+    lsR(new File(path), ff)
     
   def lsR(maybeDir: File, ff: FileFilter): List[File] = {
     require (maybeDir.exists && maybeDir.canRead)

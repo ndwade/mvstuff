@@ -53,12 +53,12 @@ object GenRandomTestData extends App {
   /*
    * each arg is a path to the prospective data file to be created
    */
-  val root = "src" +/+ "test" +/+ "resources" +/+ "files"
+  val root = "src" / "test" / "resources" / "files"
   val specs = Vector(
-          ("blah.jnk",                  271), 
-          ("x" +/+ "foo.jnk",           618), 
-          ("x" +/+ "y" +/+ "bar.jnk",   314)
-      ) map { case (path, size) => (root +/+ path, size) }
+          ("blah.jnk",              271), 
+          ("x" / "foo.jnk",         618), 
+          ("x" / "y" / "bar.jnk",   314)
+      ) map { case (path, size) => (root / path, size) }
           
   val bbuf = new Array[Byte](1024)
   val rnd = new util.Random(0xBADF82BF00D4AF00L)
@@ -72,6 +72,6 @@ object GenRandomTestData extends App {
       }
     }
   }
-  var ok = cp(specs(0)._1, root +/+ "x" +/+ "blah_copy.jnk"); assert(ok)
-  ok = cp(specs(1)._1, root +/+ "foo_copy.jnk"); assert(ok)
+  var ok = cp(specs(0)._1, root / "x" / "blah_copy.jnk"); assert(ok)
+  ok = cp(specs(1)._1, root / "foo_copy.jnk"); assert(ok)
 }

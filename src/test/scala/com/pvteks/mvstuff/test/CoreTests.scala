@@ -69,36 +69,35 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   }
   
   def cpAndSetLastModified(src: String, dest: String) {
-    val sf = new File("files" +/+ src)
-    val df = new File("files" +/+ dest)
+    val sf = new File("files" / src)
+    val df = new File("files" / dest)
     cp(sf, df)
     sf.setLastModified(df.lastModified - 1)
     assert(sf.lastModified() < df.lastModified())
   }
   
   @Before def setup() {
-    Console.err.println(sys.props("user.dir"))
     rmRfd("temp")
     rmRfd("files")
     mkdir("temp")
     mkdir("files")
     cpTree("golden", "files")
-    cpAndSetLastModified("x" +/+ "foo.jnk", "foo_copy.jnk")
-    cpAndSetLastModified("blah.jnk", "x" +/+ "blah_copy.jnk")
-    cpAndSetLastModified("a.txt", "x" +/+ "y" +/+ "a_copy.txt")
+    cpAndSetLastModified("x" / "foo.jnk", "foo_copy.jnk")
+    cpAndSetLastModified("blah.jnk", "x" / "blah_copy.jnk")
+    cpAndSetLastModified("a.txt", "x" / "y" / "a_copy.txt")
   }
   
   @Test def digest() {
 
     println(sys.props("user.dir"))
 
-    val a = new File("files" +/+ "a.txt")
+    val a = new File("files" / "a.txt")
     mkDigest(a) should equal (sha1_s2bv("4bae196a7ed6a46e68ca300d5a24f05f48bf7f10"))     // from sha1sum
 
-    val aCopy = new File("files" +/+ "x" +/+ "y" +/+ "a_copy.txt")
+    val aCopy = new File("files" / "x" / "y" / "a_copy.txt")
     mkDigest(aCopy) should equal (sha1_s2bv("4bae196a7ed6a46e68ca300d5a24f05f48bf7f10"))
     
-    val b = new File("files" +/+ "x" +/+ "b.txt")
+    val b = new File("files" / "x" / "b.txt")
     mkDigest(b) should equal (sha1_s2bv("8ca6e3991eede2d4bdf6996870f3843e9de17996"))     // from sha1sum
   }
   
@@ -107,10 +106,10 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val fDir = new File("temp")
     (fDir.exists && fDir.isDirectory) should be (true) 
     
-    val fOrg = new File("files" +/+ "blah.jnk")
+    val fOrg = new File("files" / "blah.jnk")
     fOrg.exists should be (true)
     
-    val fCopy = new File("temp" +/+ "blah.jnk")
+    val fCopy = new File("temp" / "blah.jnk")
     fCopy.exists should be (false)
     
     cp(fOrg, fCopy)
@@ -128,30 +127,30 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   val jnks = Set[String](
           "blah.jnk",
           "foo_copy.jnk",
-          "x" +/+ "blah_copy.jnk",
-          "x" +/+ "foo.jnk",
-          "x" +/+ "y" +/+ "bar.jnk"
-      ) map ("files" +/+ _)
+          "x" / "blah_copy.jnk",
+          "x" / "foo.jnk",
+          "x" / "y" / "bar.jnk"
+      ) map ("files" / _)
       
   val txts = Set[String](
           "a.txt",
-          "x" +/+ "b.txt",
-          "x" +/+ "y" +/+ "a_copy.txt"
-      ) map ("files" +/+ _)
+          "x" / "b.txt",
+          "x" / "y" / "a_copy.txt"
+      ) map ("files" / _)
   
   val xfiles = Set[String](
-          "x" +/+ "b.txt",
-          "x" +/+ "y" +/+ "a_copy.txt",
-          "x" +/+ "blah_copy.jnk",
-          "x" +/+ "foo.jnk",
-          "x" +/+ "y" +/+ "bar.jnk"
-      ) map ("files" +/+ _)
+          "x" / "b.txt",
+          "x" / "y" / "a_copy.txt",
+          "x" / "blah_copy.jnk",
+          "x" / "foo.jnk",
+          "x" / "y" / "bar.jnk"
+      ) map ("files" / _)
       
   val allDups = List(
           "foo_copy.jnk",
-          "x" +/+ "blah_copy.jnk",
-          "x" +/+ "y" +/+ "a_copy.txt"
-      ) map ("files" +/+ _)
+          "x" / "blah_copy.jnk",
+          "x" / "y" / "a_copy.txt"
+      ) map ("files" / _)
 
   val allFiles = txts ++ jnks 
 
@@ -169,7 +168,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     pathSet("files", new ExtensionFileFilter("tXt", "jnK")) should equal (txts ++ jnks)
   }
   
-  val xfileRx = ("files" +/+ "x" +/+ ".*\\.(?i:jnk|TXT)").escFileSep.r
+  val xfileRx = ("files" / "x" / ".*\\.(?i:jnk|TXT)").escFileSep.r
   val rxff = new RegexFileFilter(xfileRx)
   
   @Test def regexFileFilter() {
@@ -199,7 +198,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val expected = (allFiles -- allDups) map { dateString + '-' + _.replace(File.separator, "-") }
     
     val idd = IndexedDestDir("temp")
-    idd cpstuff ("files" +/+ ".*\\.(?i:jnk|TXT)").escFileSep.r
+    idd cpstuff ("files" / ".*\\.(?i:jnk|TXT)").escFileSep.r
     resultFiles should equal (expected)
     idd.dups should equal (3)
     idd.inspectIndex()
@@ -208,7 +207,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val idd2 = IndexedDestDir("temp")
     println("idd2-pre")
     idd2.inspectIndex
-    idd2 cpstuff ("files" +/+ ".*_copy\\.(?i:jnk|TXT)").escFileSep.r
+    idd2 cpstuff ("files" / ".*_copy\\.(?i:jnk|TXT)").escFileSep.r
     resultFiles should equal (expected)
     idd2.dups should equal (3)
     println("idd2-post")
