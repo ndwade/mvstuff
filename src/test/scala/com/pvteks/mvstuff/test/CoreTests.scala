@@ -70,47 +70,49 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     Vector(sha1.sliding(2, 2).map(hex2byte(_)).toSeq:_*)
   }
   
+  val testHome = "src"/"test"/"resources"
+
   def cpAndSetLastModified(src: String, dest: String) {
     
-    val sf = new File("files" / src)
-    val df = new File("files" / dest)
+    val sf = new File(testHome/"files"/src)
+    val df = new File(testHome/"files"/dest)
     cp(sf, df)
     sf.setLastModified(df.lastModified - 1)
     assert(sf.lastModified() < df.lastModified())
   }
   
   @Before def setup() {
-    rmRfd("temp")
-    rmRfd("files")
-    mkdir("temp")
-    mkdir("files")
-    cpTree("golden", "files")
-    cpAndSetLastModified("x" / "foo.jnk", "foo_copy.jnk")
+    rmRfd(testHome/"temp")
+    rmRfd(testHome/"files")
+    mkdir(testHome/"temp")
+    mkdir(testHome/"files")
+    cpTree(testHome/"golden", testHome/"files")
+    cpAndSetLastModified("x"/"foo.jnk", "foo_copy.jnk")
     cpAndSetLastModified("blah.jnk", "x" / "blah_copy.jnk")
     cpAndSetLastModified("a.txt", "x" / "y" / "a_copy.txt")
   }
   
   @Test def digest() {
 
-    val a = new File("files" / "a.txt")
+    val a = new File(testHome/"files" / "a.txt")
     mkDigest(a) should equal (sha1_s2bv("4bae196a7ed6a46e68ca300d5a24f05f48bf7f10"))     // from sha1sum
 
-    val aCopy = new File("files" / "x" / "y" / "a_copy.txt")
+    val aCopy = new File(testHome/"files" / "x" / "y" / "a_copy.txt")
     mkDigest(aCopy) should equal (sha1_s2bv("4bae196a7ed6a46e68ca300d5a24f05f48bf7f10"))
     
-    val b = new File("files" / "x" / "b.txt")
+    val b = new File(testHome/"files" / "x" / "b.txt")
     mkDigest(b) should equal (sha1_s2bv("8ca6e3991eede2d4bdf6996870f3843e9de17996"))     // from sha1sum
   }
   
   @Test def cpMkdirRmRfd() {
         
-    val fDir = new File("temp")
+    val fDir = new File(testHome/"temp")
     (fDir.exists && fDir.isDirectory) should be (true) 
     
-    val fOrg = new File("files" / "blah.jnk")
+    val fOrg = new File(testHome/"files" / "blah.jnk")
     fOrg.exists should be (true)
     
-    val fCopy = new File("temp" / "blah.jnk")
+    val fCopy = new File(testHome/"temp" / "blah.jnk")
     fCopy.exists should be (false)
     
     cp(fOrg, fCopy)
@@ -155,8 +157,8 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   val allFiles = txts ++ jnks 
 
   private def pathSet(path: String, ff: FileFilter): Set[String] = {
-    val files = ls(new File(path), ff, r=true)
-    val set = files.map(_.getPath).toSet
+    val files = ls(new File(testHome/path), ff, r=true)
+    val set = files.map(_.getPath.stripPrefix(testHome/)).toSet
     files.size should equal (set.size)        // no dups! path names enforce this.
     set
   }
@@ -169,55 +171,60 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   }
   
   val xfileRx = ("files" / "x" / ".*\\.(?i:jnk|TXT)").escFileSep.r
-  val rxff = new RegexFileFilter(xfileRx)(pwd)
+  val rxff = new RegexFileFilter(xfileRx)(pwd/testHome)
   
   @Test def regexFileFilter() {
     pathSet("files", rxff) should equal (xfiles)
   }
   
   def resultFiles = {
-    val files = for (file <- (new File("temp")).listFiles; if (!file.isHidden)) yield file
-    files.map(_.getPath drop ("temp".length + 1)).toSet 
+    val files = for (file <- (new File(testHome/"temp")).listFiles; if (!file.isHidden)) yield file
+    files.map(_.getPath.stripPrefix(testHome/"temp"/)).toSet 
   }
+  
   @Test def indexedDestDirNoDups() {
     
     testabilityDate = new java.util.Date
     val xpected = (xfiles) map { dateString + '-' + _.replace(File.separator, "-") }
 
-    val idd = IndexedDestDir("temp").verbose
-    idd cpstuff xfileRx
+    val idd = (testHome/"temp").asIDD.verbose 
+    // idd cpstuff xfileRx
+    testHome.recursive.flatten.verbose.filter(xfileRx) copyTo idd
     resultFiles should equal (xpected)
     idd.dups should equal (0)
     idd.inspectIndex()
-    rmRfd("temp") should be (true)
+//    rmRfd("temp") should be (true)
+    rmRfd(testHome/"temp") should be (true)
   }
   
   @Test def indexedDestDirAll() {
     
     testabilityDate = new java.util.Date
     val expected = (allFiles -- allDups) map { dateString + '-' + _.replace(File.separator, "-") }
-    
-    val idd = IndexedDestDir("temp")
-    idd cpstuff ("files" / ".*\\.(?i:jnk|TXT)").escFileSep.r
+
+    val sd = testHome.recursive.flatten.verbose.filter(("files" / ".*\\.(?i:jnk|TXT)").escFileSep.r)
+    val idd = (testHome/"temp").asIDD.verbose
+    sd copyTo idd
+      
     resultFiles should equal (expected)
-    idd.dups should equal (3)
+    sd.dups should equal (3)
     idd.inspectIndex()
     idd.flush(); idd.close()
     
-    val idd2 = IndexedDestDir("temp").verbose
-//    ("src"/"test"/"resources").recursive.flatten.filter(("files" / ".*_copy\\.(?i:jnk|TXT)").escFileSep.r).verbose copyTo 
-//      ("src"/"test"/"resources"/"temp").asIDD.verbose
-    
     println("idd2-pre")
+    val sd2 = testHome.recursive.flatten.verbose
+                      .filter(("files" / ".*_copy\\.(?i:jnk|TXT)").escFileSep.r)
+    val idd2 = IndexedDestDir(testHome/"temp").verbose
     idd2.inspectIndex
-    idd2 cpstuff ("files" / ".*_copy\\.(?i:jnk|TXT)").escFileSep.r
+    sd2 copyTo idd2
+      
     resultFiles should equal (expected)
-    idd2.dups should equal (3)
+    sd2.dups should equal (3)
     println("idd2-post")
     idd2.inspectIndex()
     idd2.flush(); idd2.close()
     
-    rmRfd("temp") should be (true)
+    rmRfd(testHome/"temp") should be (true)
      
   }
   

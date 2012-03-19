@@ -183,7 +183,7 @@ class MvStuff private[mvstuff] {
     }
   }
   
-  implicit def exts2ff(exts: String*) = new ExtensionFileFilter(exts: _*)
+  // implicit def exts2ff(exts: String*) = new ExtensionFileFilter(exts: _*)
 
   /**
    * A generalized <code>Regex FileFilter</code>.
@@ -197,7 +197,7 @@ class MvStuff private[mvstuff] {
     }
   }
 
-  implicit def regex2ff(regex: util.matching.Regex)(implicit evrp: String) = new RegexFileFilter(regex)
+  // implicit def regex2ff(regex: util.matching.Regex)(implicit evrp: String) = new RegexFileFilter(regex)
   
   val passAllFF = new FileFilter { def accept(f: File) = true }
 
@@ -475,14 +475,14 @@ class MvStuff private[mvstuff] {
             }
           }
         }
-        if (_rmSrc && src.exists && !rm(src))  err.println("failed to delete " + src.getPath)
+        if (ok && _rmSrc && src.exists && !rm(src)) err.println("failed to delete " + src.getPath)
         if (!ok) err.println("failed to copy " + src.relativePath + " to " + dest.getPath)
         ok
       }
       val ok = if (_flatten) {
         ls(file=dir, ff=_ff, r=_recursive)
           .sortWith(_.canonicalFile.lastModified < _.canonicalFile.lastModified)
-          .map(_cp(_, idd.dir))
+          .map(src => _cp(src, new File(idd.dir, src.flatName)))
           .fold(true)(_ & _)
       } else {
         cpTree(src=dir, dest=idd.dir, ff=_ff, cpf=_cp(_, _))
@@ -496,12 +496,17 @@ class MvStuff private[mvstuff] {
      */
     def asSD = this
     def verbose: SourceDir = { _verbose = true; this }
-    /** when flattened, earlier timestamps are preferred. When hierarchical, files higher in the hierarchy are preferred */
+    /** when flattened, earlier timestamps are preferred. 
+      * When hierarchical, files higher in the hierarchy are preferred 
+      * - within level preference is undefined*/
     def flatten: SourceDir = { _flatten = true; this }
     def recursive: SourceDir = { _recursive = true; this }
-    def filter(ff: FileFilter): SourceDir = { _ff = ff; this}
     
-    def copyTo(dest: IndexedDestDir): Boolean = dostuff(dest)
+    def filter(ff: FileFilter): SourceDir = { _ff = ff; this}
+    def filter(regex: util.matching.Regex): SourceDir = { _ff = new RegexFileFilter(regex); this}
+    def filter(exts: String*): SourceDir = { _ff = new ExtensionFileFilter(exts: _*); this}
+    
+    def copyTo(dest: IndexedDestDir): Boolean = dostuff(dest) 
     def moveTo(dest: IndexedDestDir): Boolean = { _rmSrc = true; dostuff(dest) }
 
     def copied: Int = _copied    
