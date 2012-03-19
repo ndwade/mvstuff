@@ -49,7 +49,8 @@ import java.io._
  * Data for testing - binary "Ipsum Lorem", if you will... 
  */
 object GenRandomTestData extends App {
-  
+  import java.io.File
+  def cpPath(from: String, to: String): Boolean = cp(new File(from), new File(to), true)
   /*
    * each arg is a path to the prospective data file to be created
    */
@@ -72,6 +73,6 @@ object GenRandomTestData extends App {
       }
     }
   }
-  var ok = cp(specs(0)._1, root / "x" / "blah_copy.jnk"); assert(ok)
-  ok = cp(specs(1)._1, root / "foo_copy.jnk"); assert(ok)
+  var ok = cpPath(specs(0)._1, root / "x" / "blah_copy.jnk"); assert(ok)
+  ok = cpPath(specs(1)._1, root / "foo_copy.jnk"); assert(ok)
 }

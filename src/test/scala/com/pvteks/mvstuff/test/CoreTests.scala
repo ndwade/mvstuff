@@ -117,7 +117,6 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     fCopy.exists should be (true)
     
     mkDigest(fOrg) should equal (mkDigest(fCopy))
-    fOrg.digest should equal (fCopy.digest)
     fOrg.lastModified should equal (fCopy.lastModified)
     fOrg.length should equal (fCopy.length)
     
@@ -156,7 +155,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   val allFiles = txts ++ jnks 
 
   private def pathSet(path: String, ff: FileFilter): Set[String] = {
-    val files = lsR(new File(path), ff)
+    val files = ls(new File(path), ff, r=true)
     val set = files.map(_.getPath).toSet
     files.size should equal (set.size)        // no dups! path names enforce this.
     set
@@ -170,7 +169,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   }
   
   val xfileRx = ("files" / "x" / ".*\\.(?i:jnk|TXT)").escFileSep.r
-  val rxff = new RegexFileFilter(xfileRx)
+  val rxff = new RegexFileFilter(xfileRx)(pwd)
   
   @Test def regexFileFilter() {
     pathSet("files", rxff) should equal (xfiles)
@@ -185,7 +184,7 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     testabilityDate = new java.util.Date
     val xpected = (xfiles) map { dateString + '-' + _.replace(File.separator, "-") }
 
-    val idd = IndexedDestDir("temp")
+    val idd = IndexedDestDir("temp").verbose
     idd cpstuff xfileRx
     resultFiles should equal (xpected)
     idd.dups should equal (0)
@@ -205,7 +204,10 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     idd.inspectIndex()
     idd.flush(); idd.close()
     
-    val idd2 = IndexedDestDir("temp")
+    val idd2 = IndexedDestDir("temp").verbose
+//    ("src"/"test"/"resources").recursive.flatten.filter(("files" / ".*_copy\\.(?i:jnk|TXT)").escFileSep.r).verbose copyTo 
+//      ("src"/"test"/"resources"/"temp").asIDD.verbose
+    
     println("idd2-pre")
     idd2.inspectIndex
     idd2 cpstuff ("files" / ".*_copy\\.(?i:jnk|TXT)").escFileSep.r
