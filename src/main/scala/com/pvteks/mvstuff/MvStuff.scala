@@ -39,7 +39,7 @@
 */
 
 /**
- * A focussed set of primitives to shove large quantities of files in random directory structures
+ * A focused set of primitives to shove large quantities of files in random directory structures
  * into a single, managed directory, eliminating duplicates, and preserving time order.
  * 
  * Appropriate for "stuff" which is non-critical but which is worth hanging on to.
@@ -49,12 +49,6 @@
  * for specific purposes.
  */
 
-/*
- * TODO:
- * 
- * wtf is up with the ./ stuff
- * 
- */
 package com.pvteks.mvstuff
 
 // object `package` extends `package`
@@ -93,10 +87,7 @@ class MvStuff private[mvstuff] {
   import java.io.{ Console => _, _ }
   import java.security.{ MessageDigest, DigestInputStream }
 
-  /*
-   * private crap
-   */
-  private val indexName = ".mvstuff-index"
+  val indexName = ".mvstuff-index"
 
   private def esc(s: String): String = """([ (){}\\$&#;])""".r.replaceAllIn(s, """\""" + _)
   
@@ -119,7 +110,7 @@ class MvStuff private[mvstuff] {
     finally { withCloseable(f) { f.flush() } }
   }
   
-  def insist(ok: Boolean) { if (!ok) throw new IllegalStateException("not OK!") }
+  private def insist(ok: Boolean) { if (!ok) throw new IllegalStateException("not OK!") }
   
   /**
    * Make a sha1 digest for a <code>File</code>
@@ -155,7 +146,7 @@ class MvStuff private[mvstuff] {
    * A pimped <code>File</code>, with destination name.
    */
   class SourceFile(private[mvstuff] val _file: File, val rootPath: String) {
-    require(_file.exists && _file.canRead)
+    require(_file.exists && _file.canRead, _file)
     lazy val canonicalFile = _file.getCanonicalFile
     lazy val relativePath = canonicalFile.getPath.stripPrefix(rootPath/)
     lazy val flatName = dateString + '-' + {
@@ -275,10 +266,10 @@ class MvStuff private[mvstuff] {
     require (src.exists && src.isDirectory && src.canRead)
     require (dest.exists && dest.isDirectory && dest.canRead && dest.canWrite)
     def _cpt(src: File, dest: File): Boolean = {
-      require (src.exists && src.canRead)
+      require (src.exists && src.canRead, src)
       require (dest.exists && dest.isDirectory && dest.canRead && dest.canWrite)
       if (!src.isDirectory) {
-        cpf(src, new File(dest, src.getName))
+        if (ff accept src) cpf(src, new File(dest, src.getName)) else true
       } else {
         val subDest = mkdir(new File(dest, src.getName))
         src.listFiles.map(_cpt(_, subDest)).fold(true)(_ & _) 
@@ -299,29 +290,21 @@ class MvStuff private[mvstuff] {
   }
   
   /**
-   * Represents and indexed directory. Files are stored flat in the directory (we rely on Spotlight
-   * to find stuff), and duplicates are elminated by checking against an index of sha1 digests.
+   * Represents ab indexed directory. Files may be stored flat in the directory (rely on Spotlight
+   * to find stuff), or as a tree - duplicates elminated by checking against index of sha1 digests.
    *
    * new features:
    * - allow specification of source dir (removes need for running in same dir as source)
    * - make recursive traversal of source directories optional
    * - make flattening of dest tree optional.
-   * 
-   * "sub/stuff"
    */
   class IndexedDestDir private (val dir: File) {
 
     require (dir.exists && dir.isDirectory && dir.canRead && dir.canWrite)
     
-    val srcDir = new File(".").getCanonicalFile
-    implicit val rp = srcDir.getPath
-
-    def asIDD = this
-    private[this] var _verbose = false
-    def verbose: IndexedDestDir = { _verbose = true; this }
-    
-    val dm = mutable.Map[Vector[Byte],  String]()
-    val index = new File(dir, indexName)
+    private[this] var _verbose = false    
+    private[this] val dm = mutable.Map[Vector[Byte],  String]()
+    private[this] val index = new File(dir, indexName)
 
     if (!index.exists) {
       println(dir.getPath + ": creating index...")
@@ -354,52 +337,6 @@ class MvStuff private[mvstuff] {
       }
       println(dir.getPath + ": read " + dm.size + " index entries")
     }
-
-    private[this] val dos = new DataOutputStream(new FileOutputStream(index, true))
-    
-    private[this] var _copied = 0
-    def copied: Int = _copied
-    
-    private[this] var _dups = 0;
-    def dups: Int = _dups
-    
-    def indexAndCopyFrom(src: SourceFile, deleteSource: Boolean = false) {
-      // err.println("file: " + src.file + " rp: " + src.rootPath)
-      val digest = mkDigest(src)
-      if (dm contains digest) {
-        _dups += 1
-        println("dup: " + src.getPath + " is identical to " + dm(digest))
-      } else {
-        val dest = new File(dir, src.flatName)
-        val ok = deleteSource && (src renameTo dest) || cp(src, dest)
-        if (!ok) { 
-          err.println("failed to copy " + src.getPath + " to " + dest.getPath)
-          return
-        } else {
-          println("copied " + src.getPath + " to " + dest.getPath)
-          writeEntry(dos, digest, src.flatName)
-          dm(digest) = src.flatName
-          _copied += 1
-        }
-      }
-      if (deleteSource && src.exists && !rm(src)) 
-        err.println("failed to delete " + src.getPath)
-    }
-    
-    private def dostuff(ff: FileFilter, deleteSource: Boolean) {
-      withFlushable(this) {
-                
-        ls(file=srcDir, ff=ff, r=true) sortWith (_.canonicalFile.lastModified < _.canonicalFile.lastModified) map { 
-          indexAndCopyFrom(_, deleteSource) 
-        }
-      } 
-      println("copied " + copied + " files to " + dir)
-    }
-      
-    def inspectIndex() { for ((digest, name) <- dm) println(digest.toHexString + " -> " + name) }
-    
-    def flush() { dos.flush() }
-    def close() { dos.close() }
     
     private[this] def writeEntry(dos: DataOutputStream, digest: Vector[Byte], name: String) {
       require (digest.size == 20)
@@ -407,18 +344,8 @@ class MvStuff private[mvstuff] {
       dos.writeUTF(name)
       if (_verbose) println("  writing entry " + digest.toHexString + " -> " + name)
     }
-    
-    @inline def mvstuff(exts: String*)  { mvstuff(new ExtensionFileFilter(exts:_*)) }
-    @inline def mvstuff(regex: util.matching.Regex)   { mvstuff(new RegexFileFilter(regex)) }
-    @inline def mvstuff(ff: FileFilter) { dostuff(ff, true) }
-    
-    @inline def cpstuff(exts: String*)  { cpstuff(new ExtensionFileFilter(exts:_*)) }
-    @inline def cpstuff(regex: util.matching.Regex)   { cpstuff(new RegexFileFilter(regex)) }
-    @inline def cpstuff(ff: FileFilter) { dostuff(ff, false) }    
-    
-    /* 
-     * new stuff
-     */
+
+    private[this] val dos = new DataOutputStream(new FileOutputStream(index, true))
     
     private[mvstuff] def dupeName(digest: Vector[Byte]): Option[String] = dm.get(digest)
     
@@ -427,6 +354,19 @@ class MvStuff private[mvstuff] {
       dm(digest) = path
       dos.flush();	// ?!
     }
+
+    /*
+     * public API
+     */
+    def asIDD = this
+    def verbose: IndexedDestDir = { _verbose = true; this }
+
+    def inspectIndex() { for ((digest, name) <- dm) println(digest.toHexString + " -> " + name) }
+    
+    def flush() { dos.flush() }
+    def close() { dos.close() }
+    
+
   }
     
   object IndexedDestDir {
@@ -446,11 +386,11 @@ class MvStuff private[mvstuff] {
     private[this] var _copied = 0
     private[this] var _dups = 0
 
-    private var _verbose = false
-    private var _flatten = false
-    private var _recursive = false
-    private var _rmSrc = false
-    private var _ff = passAllFF
+    private[this] var _verbose = false
+    private[this] var _flatten = false
+    private[this] var _recursive = false
+    private[this] var _rmSrc = false
+    private[this] var _ff = passAllFF
     
     private def dostuff(idd: IndexedDestDir): Boolean = {
       
@@ -463,11 +403,12 @@ class MvStuff private[mvstuff] {
             true // considered success
           }
           case None => {
+            val srcNameForIndexEntry = if (_flatten) src.flatName else src.relativePath
+            val srcPath = src.getPath
             if (_rmSrc && (src renameTo dest) || cp(src, dest, true)) {
-              val name = if (_flatten) src.flatName else src.relativePath
-              idd.writeIndexEntry(digest, name)
+              idd.writeIndexEntry(digest, srcNameForIndexEntry)
               _copied += 1
-              if (_verbose) println("copied " + src.getPath + " to " + dest.getPath)
+              if (_verbose) println("copied " + srcPath + " to " + dest.getPath)
               true
             } else { 
               err.println("failed to copy " + src.relativePath + " to " + dest.getPath)

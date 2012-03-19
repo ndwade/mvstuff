@@ -82,6 +82,20 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   }
   
   @Before def setup() {
+    /*
+     * files/
+     *     a.txt
+     *     blah.jnk
+     *     foo_copy.jnk
+     *     x/
+     *         b.txt
+     *         blah_copy.jnk
+     *         foo.jnk
+     *         y/
+     *             a_copy.jnk
+     *             bar.jnk
+     *             
+     */
     rmRfd(testHome/"temp")
     rmRfd(testHome/"files")
     mkdir(testHome/"temp")
@@ -188,12 +202,11 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     val xpected = (xfiles) map { dateString + '-' + _.replace(File.separator, "-") }
 
     val idd = (testHome/"temp").asIDD.verbose 
-    // idd cpstuff xfileRx
-    testHome.recursive.flatten.verbose.filter(xfileRx) copyTo idd
+    val sd = testHome.recursive.flatten.verbose.filter(xfileRx)
+    sd copyTo idd
     resultFiles should equal (xpected)
-    idd.dups should equal (0)
+    sd.dups should equal (0)
     idd.inspectIndex()
-//    rmRfd("temp") should be (true)
     rmRfd(testHome/"temp") should be (true)
   }
   
@@ -228,4 +241,71 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
      
   }
   
+  @Test def indexedDestDirAllMove() {
+    
+    testabilityDate = new java.util.Date
+    val expected = (allFiles -- allDups) map { dateString + '-' + _.replace(File.separator, "-") }
+
+    val sd = testHome.recursive.flatten.verbose.filter(("files" / ".*\\.(?i:jnk|TXT)").escFileSep.r)
+    val idd = (testHome/"temp").asIDD.verbose
+    sd moveTo idd
+      
+    resultFiles should equal (expected)
+    sd.dups should equal (3)
+    idd.inspectIndex()
+    idd.flush(); idd.close()
+    
+    rmEmptyDirs(new File(testHome/"files")) should equal (true)
+
+    rmRfd(testHome/"temp") should be (true)
+     
+  }
+  
+  @Test def indexedDestDirHierarchical() {
+
+    testabilityDate = new java.util.Date
+    val expected = (allFiles map(_.stripPrefix("files"/))) -- 
+      Seq("x"/"blah_copy.jnk", "x"/"foo.jnk", "x"/"y"/"a_copy.txt") + indexName
+
+    val srcPath = testHome/"files"
+    val destPath = testHome/"temp"
+    
+    val sd = (srcPath).recursive.verbose.filter((".*\\.(?i:jnk|TXT)").escFileSep.r)
+    val idd = (destPath).asIDD.verbose
+    sd copyTo idd
+      
+    val resultSet = ls(new File(destPath), r=true) map (_.getPath.stripPrefix(destPath/)) toSet
+    
+    resultSet should equal (expected)
+    sd.dups should equal (3)
+    idd.inspectIndex()
+    idd.flush(); idd.close()
+    
+    rmRfd(testHome/"temp") should be (true)
+  }
+  
+  @Test def indexedDestDirHierarchicalMove() {
+
+    testabilityDate = new java.util.Date
+    val expected = (allFiles map(_.stripPrefix("files"/))) -- 
+      Seq("x"/"blah_copy.jnk", "x"/"foo.jnk", "x"/"y"/"a_copy.txt") + indexName
+
+    val srcPath = testHome/"files"
+    val destPath = testHome/"temp"
+    
+    val sd = (srcPath).recursive.verbose.filter((".*\\.(?i:jnk|TXT)").escFileSep.r)
+    val idd = (destPath).asIDD.verbose
+    sd moveTo idd
+      
+    val resultSet = ls(new File(destPath), r=true) map (_.getPath.stripPrefix(destPath/)) toSet
+    
+    resultSet should equal (expected)
+    sd.dups should equal (3)
+    idd.inspectIndex()
+    idd.flush(); idd.close()
+    
+    rmEmptyDirs(new File(testHome/"files")) should equal (true)
+    
+    rmRfd(testHome/"temp") should be (true)
+  }
 }
