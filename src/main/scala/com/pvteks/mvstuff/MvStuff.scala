@@ -89,6 +89,12 @@ class MvStuff private[mvstuff] {
 
   val indexName = ".mvstuff-index"
 
+  private def insist(ok: Boolean) { if (!ok) throw new IllegalStateException("not OK!") }
+  
+  private implicit def file2saferFile(f: File) = new {
+    def safeListFiles: Array[File] = Option(f.listFiles) getOrElse Array()
+  }
+
   private def esc(s: String): String = """([ (){}\\$&#;])""".r.replaceAllIn(s, """\""" + _)
   
   class PathString(string: String) {
@@ -109,8 +115,6 @@ class MvStuff private[mvstuff] {
     try { body }
     finally { withCloseable(f) { f.flush() } }
   }
-  
-  private def insist(ok: Boolean) { if (!ok) throw new IllegalStateException("not OK!") }
   
   /**
    * Make a sha1 digest for a <code>File</code>
@@ -221,7 +225,7 @@ class MvStuff private[mvstuff] {
 
   def rmRfd(file: File): Boolean = {
     require (file.exists && file.canRead)
-    val ok = if (file.isDirectory) file.listFiles.map(rmRfd(_)).fold(true){ _ & _ } else true
+    val ok = if (file.isDirectory) file.safeListFiles.map(rmRfd(_)).fold(true){ _ & _ } else true
     ok & rm(file)
   }
   
@@ -230,7 +234,7 @@ class MvStuff private[mvstuff] {
    */
   def rmEmptyDirs(dir: File): Boolean = {
     require (dir.exists && dir.isDirectory && dir.canRead)
-    val ok = dir.listFiles.filter(_.isDirectory).map(rmEmptyDirs(_)).fold(true){ _ & _ }
+    val ok = dir.safeListFiles.filter(_.isDirectory).map(rmEmptyDirs(_)).fold(true){ _ & _ }
     val dss = new File(dir, ".DS_Store")        // Finder love!
     if (dss.exists) rm(dss)
     ok & (if (dir.list.isEmpty) rm(dir) else { err.println("NotEmpty? : " + dir); false })
@@ -263,6 +267,7 @@ class MvStuff private[mvstuff] {
              dest: File, 
              ff: FileFilter = passAllFF, 
              cpf: (File, File) => Boolean = cp(_, _)): Boolean = {
+    // TODO: get rid of ugly exceptions and use Either or fold up into return Boolean
     require (src.exists && src.isDirectory && src.canRead)
     require (dest.exists && dest.isDirectory && dest.canRead && dest.canWrite)
     def _cpt(src: File, dest: File): Boolean = {
@@ -271,11 +276,12 @@ class MvStuff private[mvstuff] {
       if (!src.isDirectory) {
         if (ff accept src) cpf(src, new File(dest, src.getName)) else true
       } else {
-        val subDest = mkdir(new File(dest, src.getName))
-        src.listFiles.map(_cpt(_, subDest)).fold(true)(_ & _) 
+        val subDest = new File(dest, src.getName)
+        if (!subDest.exists) mkdir(subDest)
+        src.safeListFiles.map(_cpt(_, subDest)).fold(true)(_ & _) 
       }
     }
-   src.listFiles.map(_cpt(_, dest)).fold(true)(_ & _) 
+   src.safeListFiles.map(_cpt(_, dest)).fold(true)(_ & _) 
   }
   
   def ls(file: File = new File("."), 
@@ -285,7 +291,7 @@ class MvStuff private[mvstuff] {
     if (!file.isDirectory) {
       if (ff accept file) List(file) else Nil
     } else if (r) {
-      file.listFiles.toList flatMap (ls(_, ff, r))
+      file.safeListFiles.toList flatMap (ls(_, ff, r))
     } else Nil
   }
   
@@ -310,13 +316,18 @@ class MvStuff private[mvstuff] {
       println(dir.getPath + ": creating index...")
       insist(index.createNewFile())                     // ensures index file is in index as entry
       val dos = new DataOutputStream(new FileOutputStream(index))
-      withFlushable(dos) {
-        for (file <- dir.listFiles; if (file.isFile && !file.isHidden)) {
-          val digest = mkDigest(file)
-          writeEntry(dos, digest, file.getName)
-          dm(digest) = file.getName
+      def _mkDm(dir: File): Unit = {
+        withFlushable(dos) {
+          for (file <- dir.safeListFiles) {
+            if (file.isFile && !file.isHidden) {
+              val digest = mkDigest(file)
+              writeEntry(dos, digest, file.getName)
+              dm(digest) = file.getName
+            } else if (file.isDirectory) _mkDm(file)
+          }
         }
       }
+      _mkDm(dir)
       println(dir.getPath + ": wrote digest db for " + dm.size + " files")
     }
     // sic
@@ -425,8 +436,12 @@ class MvStuff private[mvstuff] {
           .sortWith(_.canonicalFile.lastModified < _.canonicalFile.lastModified)
           .map(src => _cp(src, new File(idd.dir, src.flatName)))
           .fold(true)(_ & _)
-      } else {
+      } else if (_recursive){
         cpTree(src=dir, dest=idd.dir, ff=_ff, cpf=_cp(_, _))
+      } else {
+        val rets = for (f <- dir.safeListFiles; if (f.isFile)) 
+          yield _cp(f, new File(idd.dir, f.getName))
+        rets.fold(true)(_ & _)
       }
       println("copied " + copied + " files")
       ok

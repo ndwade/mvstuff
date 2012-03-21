@@ -190,11 +190,14 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
   @Test def regexFileFilter() {
     pathSet("files", rxff) should equal (xfiles)
   }
-  
-  def resultFiles = {
-    val files = for (file <- (new File(testHome/"temp")).listFiles; if (!file.isHidden)) yield file
-    files.map(_.getPath.stripPrefix(testHome/"temp"/)).toSet 
-  }
+ 
+  val srcPath = testHome/"files" 
+  val destPath = testHome/"temp"
+  val noHidden = new FileFilter { def accept(f: File): Boolean = !f.isHidden }
+
+  def resultFiles = ls(new File(destPath), noHidden, r=true)
+                    .map(_.getPath.stripPrefix(destPath/))
+                    .toSet
   
   @Test def indexedDestDirNoDups() {
     
@@ -261,45 +264,17 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
      
   }
   
-  @Test def indexedDestDirHierarchical() {
-
-    testabilityDate = new java.util.Date
-    val expected = (allFiles map(_.stripPrefix("files"/))) -- 
-      Seq("x"/"blah_copy.jnk", "x"/"foo.jnk", "x"/"y"/"a_copy.txt") + indexName
-
-    val srcPath = testHome/"files"
-    val destPath = testHome/"temp"
-    
-    val sd = (srcPath).recursive.verbose.filter((".*\\.(?i:jnk|TXT)").escFileSep.r)
-    val idd = (destPath).asIDD.verbose
-    sd copyTo idd
-      
-    val resultSet = ls(new File(destPath), r=true) map (_.getPath.stripPrefix(destPath/)) toSet
-    
-    resultSet should equal (expected)
-    sd.dups should equal (3)
-    idd.inspectIndex()
-    idd.flush(); idd.close()
-    
-    rmRfd(testHome/"temp") should be (true)
-  }
-  
   @Test def indexedDestDirHierarchicalMove() {
 
     testabilityDate = new java.util.Date
     val expected = (allFiles map(_.stripPrefix("files"/))) -- 
-      Seq("x"/"blah_copy.jnk", "x"/"foo.jnk", "x"/"y"/"a_copy.txt") + indexName
+      Seq("x"/"blah_copy.jnk", "x"/"foo.jnk", "x"/"y"/"a_copy.txt")
 
-    val srcPath = testHome/"files"
-    val destPath = testHome/"temp"
-    
     val sd = (srcPath).recursive.verbose.filter((".*\\.(?i:jnk|TXT)").escFileSep.r)
     val idd = (destPath).asIDD.verbose
     sd moveTo idd
-      
-    val resultSet = ls(new File(destPath), r=true) map (_.getPath.stripPrefix(destPath/)) toSet
-    
-    resultSet should equal (expected)
+          
+    resultFiles should equal (expected)
     sd.dups should equal (3)
     idd.inspectIndex()
     idd.flush(); idd.close()
@@ -308,4 +283,65 @@ class CoreTests extends JUnitSuite with ShouldMatchersForJUnit with Checkers {
     
     rmRfd(testHome/"temp") should be (true)
   }
+  
+  @Test def indexedDestDirHierarchical() {
+
+    testabilityDate = new java.util.Date
+    val expected = (allFiles map(_.stripPrefix("files"/))) -- 
+      Seq("x"/"blah_copy.jnk", "x"/"foo.jnk", "x"/"y"/"a_copy.txt")
+
+    val srcPath  = testHome/"files"
+    val destPath = testHome/"temp"
+    
+    val sd = (srcPath).recursive.verbose.filter((".*\\.(?i:jnk|TXT)").escFileSep.r)
+    val idd = (destPath).asIDD.verbose
+    sd copyTo idd
+      
+    resultFiles should equal (expected)
+    sd.dups should equal (3)
+    sd.copied should equal (5)
+    idd.inspectIndex()
+    idd.flush(); idd.close()
+    
+    /*
+     * blow away the index, start over and see if dups eliminated
+     */
+    val indexFile = new File(testHome/"temp"/indexName)
+    rm(indexFile) should be (true)
+    
+    val idd2 = (testHome/"temp").asIDD.verbose
+    val sd2 = (srcPath).recursive.verbose.filter((".*\\.(?i:jnk|TXT)").escFileSep.r)
+    sd2 moveTo idd2
+    
+    resultFiles should equal (expected)
+    sd2.dups should equal (8)
+    sd2.copied should equal (0)
+    idd2.flush(); idd2.close()
+    
+    rmRfd(testHome/"temp") should be (true)
+
+  }
+  
+  @Test def indexedDestDirNoRecursion() {
+    /*
+     * copy these files only:
+     *     a.txt
+     *     blah.jnk
+     *     foo_copy.jnk
+     */
+    val srcPath  = testHome/"files"
+    val destPath = testHome/"temp"
+    val sd = srcPath.asSD.verbose
+    val idd = (destPath).asIDD.verbose
+    sd copyTo idd
+      
+    resultFiles should equal (Set("a.txt", "blah.jnk", "foo_copy.jnk"))
+    sd.dups should equal (0)
+    sd.copied should equal (3)
+    idd.inspectIndex()
+    idd.flush(); idd.close()
+    
+    rmRfd(testHome/"temp") should be (true)
+  }
+  
 }
